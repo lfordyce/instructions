@@ -1,0 +1,1 @@
+* General notes and random thoughts / experiments in rust.
