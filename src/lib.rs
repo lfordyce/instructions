@@ -3,6 +3,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tokio::macros::support::Future;
 
+pub mod abstractions;
 pub mod diy_stream;
 pub mod hrtb_generic;
 pub mod line_writer;
