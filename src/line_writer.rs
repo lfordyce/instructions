@@ -17,9 +17,10 @@ impl LineWriter {
         r
     }
 
-    pub async fn write_newline(&mut self) {
+    pub async fn write_newline(&mut self) -> String {
         // do something
         println!("{:?}", self.state);
-        self.state = "start".to_string()
+        self.state = "start".to_string();
+        "foo bar".to_string()
     }
 }

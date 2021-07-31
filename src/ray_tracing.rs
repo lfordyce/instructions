@@ -172,15 +172,15 @@ impl Lambertian {
 }
 
 impl Material for Lambertian {
-    fn albedo(&self) -> &Vec3 {
-        &self.albedo
-    }
     fn collide(&self, ray_in: &Ray, hit: &Hit) -> Ray {
         Ray::from_spherical(
             &hit.point,
             rand::thread_rng().gen_range(0.0..=consts::PI),
             rand::thread_rng().gen_range(0.0..=2.0 * consts::PI),
         )
+    }
+    fn albedo(&self) -> &Vec3 {
+        &self.albedo
     }
 }
 

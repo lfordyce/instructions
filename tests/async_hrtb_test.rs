@@ -1,9 +1,9 @@
 use futures::channel::mpsc;
 use futures::{sink::drain, stream, Sink, SinkExt, Stream, StreamExt};
-use instructions::hrtb_generic::{test, X};
+use instructions::hrtb_generic::{add, add_explicit, take_async_callback, test, X};
 use instructions::line_writer::LineWriter;
 use instructions::plugin::{ClientConn, ClientConnectContext, Plugin};
-use instructions::{a, add_one, b, wrapper, System};
+use instructions::{a, add_one, b, check_me, wrapper, CheckerSystem, System};
 use std::convert::TryFrom;
 use std::fmt::Display;
 
@@ -80,6 +80,22 @@ async fn async_ref_functions() {
     for i in &v {
         println!("{:?}", i.call(&mut n).await);
     }
+}
+
+#[tokio::test]
+async fn async_hrtb_checker_test() {
+    let check_sys: Box<dyn CheckerSystem> = Box::new(check_me);
+    let v = 42;
+
+    let done = check_sys.call(&v).await;
+    println!("{:?}", done);
+    assert!(done)
+}
+
+#[tokio::test]
+async fn test_async_callback_hrtb() {
+    take_async_callback(add);
+    take_async_callback(add_explicit);
 }
 
 #[tokio::test]

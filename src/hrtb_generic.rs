@@ -43,3 +43,39 @@ impl X {
 pub async fn test(_: &mut X) {
     println!("b");
 }
+
+pub trait AnAsyncCallback<'a> {
+    type Output: Future<Output = ()> + 'a;
+    fn call(&self, arg: &'a mut usize) -> Self::Output;
+}
+
+impl<'a, Fut: 'a, F> AnAsyncCallback<'a> for F
+where
+    F: Fn(&'a mut usize) -> Fut,
+    Fut: Future<Output = ()> + 'a,
+{
+    type Output = Fut;
+
+    fn call(&self, arg: &'a mut usize) -> Self::Output {
+        self(arg)
+    }
+}
+
+// The trait can then be used to constrain a function's argument:
+pub async fn take_async_callback<F>(async_fn: F)
+where
+    F: for<'a> AnAsyncCallback<'a>,
+{
+    let mut number = 0;
+    async_fn.call(&mut number).await;
+    async_fn.call(&mut number).await;
+}
+
+pub async fn add(arg: &mut usize) {
+    *arg += 1;
+}
+pub fn add_explicit<'a>(number: &'a mut usize) -> (impl Future<Output = ()> + 'a) {
+    async move {
+        *number += 1;
+    }
+}

@@ -1,3 +1,4 @@
+use std::fmt::{Display, Error, Formatter};
 use std::marker::PhantomData;
 
 // Interface
@@ -148,5 +149,117 @@ impl<'a, Index> AccessorTrait for MultiDimensionalTensorAccessor<'a, One, Index>
 
     fn get(&self, index: usize) -> Self::Output {
         SingleDimensional {}
+    }
+}
+
+pub trait ProductTrait {
+    fn name(&self) -> &str;
+}
+
+pub trait ProducerTrait<'p>: Copy {
+    type Product: ProductTrait;
+    fn produce(self, name: &str) -> Self::Product;
+}
+
+pub trait LoggingProducerTrait<'p>: ProducerTrait<'p>
+where
+    <Self as ProducerTrait<'p>>::Product: Display,
+{
+    fn produce_and_log(self, name: &str) -> Self::Product {
+        let product = self.produce(name);
+        println!("Produced '{}'", product);
+        product
+    }
+}
+
+pub struct CarFactory {}
+
+pub struct Car<'p> {
+    producer: &'p CarFactory,
+    name: String,
+}
+
+impl Display for Car<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "Car with name: {}", self.name)
+    }
+}
+
+impl<'p> ProductTrait for Car<'p> {
+    fn name(&self) -> &str {
+        self.name.as_ref()
+    }
+}
+
+impl<'p> ProducerTrait<'p> for &'p CarFactory {
+    type Product = Car<'p>;
+
+    fn produce(self, name: &str) -> Self::Product {
+        Car {
+            producer: self,
+            name: String::from(name),
+        }
+    }
+}
+
+impl<'p> LoggingProducerTrait<'p> for &'p CarFactory {}
+
+trait Endpoint: for<'a> DeserializeBody<'a> {}
+trait DeserializeBody<'a> {
+    type Out: 'a;
+    fn deserialize(raw_body: &'a [u8]) -> Self::Out;
+}
+
+fn store_ep<'a, EP, F>(func: F)
+where
+    EP: Endpoint,
+    F: 'static + Fn(&'a [u8]) -> <EP as DeserializeBody<'a>>::Out,
+{
+    let _ = Box::new(func);
+    unimplemented!();
+}
+
+struct MyEndpoint;
+struct MyEndpointBody<'a> {
+    pub string: &'a str,
+}
+impl Endpoint for MyEndpoint {}
+impl<'a> DeserializeBody<'a> for MyEndpoint {
+    type Out = MyEndpointBody<'a>;
+    fn deserialize(raw_body: &'a [u8]) -> Self::Out {
+        unimplemented!();
+    }
+}
+
+struct ColorDisplay<Ifc> {
+    ifc: Ifc,
+}
+
+struct ColorDisplayDataIter<'a, Ifc> {
+    ifc: &'a mut Ifc,
+}
+impl<'a, Ifc> Iterator for ColorDisplayDataIter<'a, Ifc> {
+    type Item = u16;
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+
+trait HasReadDataIter<'a, MutRef = &'a mut Self> {
+    type Iter: Iterator<Item = u16>;
+}
+type ReadDataIter<'a, Self_> = <Self_ as HasReadDataIter<'a>>::Iter;
+
+trait ReadData: for<'a> HasReadDataIter<'a> {
+    fn read(&mut self) -> ReadDataIter<'_, Self>;
+}
+
+impl<'a, Ifc> HasReadDataIter<'a> for ColorDisplay<Ifc> {
+    type Iter = ColorDisplayDataIter<'a, Ifc>;
+}
+
+impl<Ifc> ReadData for ColorDisplay<Ifc> {
+    fn read(&mut self) -> ReadDataIter<'_, Self> {
+        ColorDisplayDataIter { ifc: &mut self.ifc }
     }
 }
