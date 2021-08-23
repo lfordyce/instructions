@@ -1,5 +1,9 @@
-use std::fmt::{Display, Error, Formatter};
+use futures::future::BoxFuture;
+use std::fmt::{Debug, Display, Error, Formatter};
 use std::marker::PhantomData;
+use std::{collections::HashMap, sync::Arc};
+use thiserror::Error;
+use tokio::sync::Mutex;
 
 // Interface
 pub trait OfficeWorker {
@@ -263,3 +267,181 @@ impl<Ifc> ReadData for ColorDisplay<Ifc> {
         ColorDisplayDataIter { ifc: &mut self.ifc }
     }
 }
+
+// =====
+pub trait Storage<D> {
+    type Error;
+
+    fn record_data(
+        self: Arc<Self>,
+        id: i64,
+        data: D,
+    ) -> BoxFuture<'static, Result<(), Self::Error>>
+    where
+        D: Send + Sync + 'static;
+
+    fn fetch_update(self: Arc<Self>, id: i64)
+        -> BoxFuture<'static, Result<Option<D>, Self::Error>>;
+}
+
+/// An error returned from [`InMemStorage`].
+#[derive(Debug, Error)]
+pub enum InMemStorageError {
+    /// Returned from [`InMemStorage::remove_dialogue`].
+    #[error("row not found")]
+    DialogueNotFound,
+}
+
+#[derive(Debug)]
+pub struct InMemStorage<D> {
+    map: Mutex<HashMap<i64, D>>,
+}
+
+impl<S> InMemStorage<S> {
+    #[must_use]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            map: Mutex::new(HashMap::new()),
+        })
+    }
+}
+
+impl<D> Storage<D> for InMemStorage<D>
+where
+    D: Clone,
+    D: Send + 'static,
+{
+    type Error = InMemStorageError;
+
+    fn record_data(self: Arc<Self>, id: i64, data: D) -> BoxFuture<'static, Result<(), Self::Error>>
+    where
+        D: Send + Sync + 'static,
+    {
+        Box::pin(async move {
+            self.map.lock().await.insert(id, data);
+            Ok(())
+        })
+    }
+
+    fn fetch_update(
+        self: Arc<Self>,
+        id: i64,
+    ) -> BoxFuture<'static, Result<Option<D>, Self::Error>> {
+        Box::pin(async move { Ok(self.map.lock().await.get(&id).map(ToOwned::to_owned)) })
+    }
+}
+
+// ==== Visitor Pattern
+pub struct Foo {
+    value: i64,
+}
+
+pub struct Bar {
+    value: i64,
+}
+
+pub trait Base<T> {
+    fn accept(&self, v: &dyn Visitor<Result = T>) -> T;
+}
+
+impl<T> Base<T> for Foo {
+    fn accept(&self, v: &dyn Visitor<Result = T>) -> T {
+        v.visit_foo(&self)
+    }
+}
+
+impl<T> Base<T> for Bar {
+    fn accept(&self, v: &dyn Visitor<Result = T>) -> T {
+        v.visit_bar(&self)
+    }
+}
+
+pub trait Visitor {
+    type Result;
+    fn visit_foo(&self, foo: &Foo) -> Self::Result;
+    fn visit_bar(&self, bar: &Bar) -> Self::Result;
+}
+
+pub struct StringVisitor<S> {
+    pub data: String,
+    pub storage: Arc<S>,
+    // pub _phantom: PhantomData<Mutex<D>>,
+}
+
+impl<S> Visitor for StringVisitor<S>
+where
+    // D: Default + Send + 'static,
+    S: Storage<String> + Send + Sync + 'static,
+    S::Error: Debug + Send + 'static,
+{
+    type Result = String;
+    fn visit_foo(&self, foo: &Foo) -> String {
+        let storage = Arc::clone(&self.storage);
+        Box::pin(async move {
+            if let Err(err) = storage
+                .record_data(foo.value, format!("it was Foo: {:}!", foo.value))
+                .await
+            {
+                println!("failed to write data to storage! {:?}", err);
+            }
+        });
+        format!("it was Foo: {:}!", foo.value)
+    }
+    fn visit_bar(&self, bar: &Bar) -> String {
+        let storage = Arc::clone(&self.storage);
+        Box::pin(async move {
+            if let Err(err) = storage
+                .record_data(bar.value, format!("it was Bar: {:}!", bar.value))
+                .await
+            {
+                println!("failed to write data to storage! {:?}", err);
+            }
+        });
+        format!("it was Bar: {:}!", bar.value)
+    }
+}
+
+pub fn test_visitor<T>(v: bool) -> Box<dyn Base<T>> {
+    if v {
+        Box::new(Foo { value: 5 })
+    } else {
+        Box::new(Bar { value: 10 })
+    }
+}
+
+pub trait FooBase {}
+
+pub trait AsFoo {
+    fn as_foo(&self) -> &dyn FooBase;
+}
+
+impl AsFoo for dyn FooBase {
+    fn as_foo(&self) -> &dyn FooBase {
+        self
+    }
+}
+
+impl<T: AsFoo + ?Sized> AsFoo for &'_ T {
+    fn as_foo(&self) -> &dyn FooBase {
+        T::as_foo(*self)
+    }
+}
+
+impl<T: AsFoo + ?Sized> AsFoo for Box<T> {
+    fn as_foo(&self) -> &dyn FooBase {
+        T::as_foo(&**self)
+    }
+}
+
+pub struct MyFooStruct;
+
+impl FooBase for MyFooStruct {}
+
+pub fn accept_foos<T: AsFoo>(foos: Vec<T>) {}
+
+pub fn create_foos() -> Box<dyn FooBase> {
+    Box::new(MyFooStruct)
+}
+
+// let foos1: Vec<Box<dyn Foo>> = vec![f1];
+// let foos2: Vec<&Box<dyn Foo>> = vec![&f2];

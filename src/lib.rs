@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -9,6 +10,7 @@ pub mod diy_stream;
 pub mod factory;
 pub mod hrtb_generic;
 pub mod line_writer;
+pub mod patterns;
 pub mod plugin;
 pub mod ray_tracing;
 
@@ -59,25 +61,42 @@ pub trait AsyncFnMutArg<'a, P: 'a, T> {
     fn call(self, arg: &'a mut P) -> Self::Fut;
 }
 
-impl<'a, P: 'a, Fut: Future + 'a, F: FnOnce(&'a mut P) -> Fut> AsyncFnMutArg<'a, P, Fut::Output>
-    for F
+impl<'a, P: 'a, Fut, F> AsyncFnMutArg<'a, P, Fut::Output> for F
+where
+    F: FnOnce(&'a mut P) -> Fut,
+    Fut: Future + 'a,
 {
     type Fut = Fut;
+
     fn call(self, arg: &'a mut P) -> Self::Fut {
         self(arg)
     }
 }
 
-pub async fn wrapper<F>(f: F)
+// impl<'a, P: 'a, Fut: Future + 'a, F: FnOnce(&'a mut P) -> Fut> AsyncFnMutArg<'a, P, Fut::Output>
+//     for F
+// {
+//     type Fut = Fut;
+//     fn call(self, arg: &'a mut P) -> Self::Fut {
+//         self(arg)
+//     }
+// }
+
+pub async fn wrapper<F>(f: F) -> i32
 where
-    F: for<'a> AsyncFnMutArg<'a, i32, ()>,
+    F: for<'a> AsyncFnMutArg<'a, i32, i32>,
 {
     let mut i = 41;
-    f.call(&mut i).await;
+    f.call(&mut i).await
 }
 
-pub async fn add_one(i: &mut i32) {
-    *i = *i + 1;
+pub async fn add_one(i: &mut i32) -> i32 {
+    // *i = *i + 1;
+    *i + 1
+}
+
+pub async fn add_ten(i: &mut i32) -> i32 {
+    *i + 10
 }
 
 pub trait AsyncFn<'a>: Send + Sync + 'static {
@@ -157,3 +176,155 @@ pub async fn check_me(v: &i32) -> bool {
     println!("checking...");
     *v == 42
 }
+
+pub struct Service;
+
+// This inherent `async fn` implements `Handler<S, P, R>`.
+impl Service {
+    async fn my_handler(&self) -> Result<(), ()> {
+        Ok(())
+    }
+}
+
+// But this async trait method does not (replace the above code with the below).
+//
+// #[async_trait]
+// trait MyHandlers {
+//     async fn my_handler(&self) -> Result<(), ()>;
+// }
+//
+// #[async_trait]
+// impl MyHandlers for Service {
+//     async fn my_handler(&self) -> Result<(), ()> {
+//         Ok(())
+//     }
+// }
+
+// -= Definitions =-
+
+pub struct Request;
+pub struct Response;
+
+type BoxedHandler<S> =
+    Box<dyn Fn(Arc<S>, Request) -> Pin<Box<dyn Future<Output = Response> + Send>>>;
+
+pub struct Router<S> {
+    state: Arc<S>,
+    handlers: HashMap<String, BoxedHandler<S>>,
+}
+
+impl<S> Router<S>
+where
+    S: Send + Sync + 'static,
+{
+    pub fn new(state: S) -> Self {
+        Router {
+            state: Arc::new(state),
+            handlers: HashMap::new(),
+        }
+    }
+
+    pub fn define_method<H, P, R>(&mut self, method: impl Into<String>, handler: H)
+    where
+        P: FromRequest,
+        H: for<'a> Handler<'a, S, P, R> + Send + Sync + 'static,
+    {
+        let handler = into_boxed_handler(handler);
+        self.handlers.insert(method.into(), handler);
+    }
+}
+
+fn into_boxed_handler<S, P, R, H>(handler: H) -> BoxedHandler<S>
+where
+    S: Send + Sync + 'static,
+    P: FromRequest,
+    H: for<'a> Handler<'a, S, P, R> + Send + Sync + 'static,
+{
+    let handler = Arc::new(handler);
+
+    let inner = move |state: Arc<S>, request: Request| -> Pin<Box<dyn Future<Output = _> + Send>> {
+        let handler = handler.clone();
+        Box::pin(async move {
+            let params = P::from_request(request); // Omitted: Convert Request into tuple of P.
+            let _response = handler.call(&*state, params).await; // Omitted: Convert into Response
+            Response
+        })
+    };
+
+    Box::new(inner)
+}
+
+pub trait Handler<'a, S, P, R> {
+    type ResponseFuture: Future<Output = R> + Send;
+
+    fn call(&self, state: &'a S, params: P) -> Self::ResponseFuture;
+}
+
+impl<'a, S, R, I, F> Handler<'a, S, (), R> for F
+where
+    S: Send + Sync + 'static,
+    I: Future<Output = R> + Send,
+    F: Fn(&'a S) -> I + Sync,
+{
+    type ResponseFuture = I;
+
+    fn call(&self, state: &'a S, _: ()) -> Self::ResponseFuture {
+        (self)(state)
+    }
+}
+
+impl<'a, S, P, R, I, F> Handler<'a, S, (P,), R> for F
+where
+    S: Send + Sync + 'static,
+    P: FromRequest,
+    I: Future<Output = R> + Send,
+    P: Send + 'static,
+    F: Fn(&'a S, P) -> I + Sync,
+{
+    type ResponseFuture = I;
+
+    fn call(&self, state: &'a S, params: (P,)) -> Self::ResponseFuture {
+        (self)(state, params.0)
+    }
+}
+
+pub trait FromRequest: Send {
+    fn from_request(request: Request) -> Self;
+}
+
+impl FromRequest for () {
+    fn from_request(_: Request) -> Self {
+        ()
+    }
+}
+
+impl<P: Send> FromRequest for (P,) {
+    fn from_request(_: Request) -> Self {
+        unimplemented!()
+    }
+}
+
+//
+// pub trait Handler<'a, T, R> {
+//     type ResponseFuture: Future<Output = R> + 'a;
+//     fn call(&self, server: &'a T) -> Self::ResponseFuture;
+// }
+// impl<'a, T, R, F, Fut> Handler<'a, T, R> for F
+// where
+//     T: 'a,
+//     R: 'static,
+//     F: Fn(&'a T) -> Fut,
+//     Fut: Future<Output = R> + 'a,
+// {
+//     type ResponseFuture = Fut;
+//
+//     fn call(&self, server: &'a T) -> Self::ResponseFuture {
+//         (self)(server)
+//     }
+// }
+// pub fn accept_async<'a, T: 'a, R, F>(callback: F)
+// where
+//     F: Handler<'a, T, R>,
+// {
+//     callback.call()
+// }

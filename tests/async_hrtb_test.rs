@@ -1,11 +1,14 @@
 use futures::channel::mpsc;
-use futures::{sink::drain, stream, Sink, SinkExt, Stream, StreamExt};
-use instructions::hrtb_generic::{add, add_explicit, take_async_callback, test, X};
+use futures::{sink::drain, stream, Future, Sink, SinkExt, Stream, StreamExt};
+use instructions::hrtb_generic::{
+    add, add_explicit, doit, take_async_callback, test, Drill, Struct, X,
+};
 use instructions::line_writer::LineWriter;
 use instructions::plugin::{ClientConn, ClientConnectContext, Plugin};
-use instructions::{a, add_one, b, check_me, wrapper, CheckerSystem, System};
+use instructions::{a, add_one, add_ten, b, check_me, wrapper, CheckerSystem, System};
 use std::convert::TryFrom;
 use std::fmt::Display;
+use std::pin::Pin;
 
 // fully qualified syntax for traits:
 // `<T as TryFrom<&'a [u8]>>::Error` to say which instance we want to
@@ -46,6 +49,21 @@ impl<'slice> Container<'slice> {
     }
 }
 
+struct Foo<'a> {
+    stream: Box<dyn Stream<Item = ()> + Sync + Send + Unpin + 'a>,
+    sink: Box<dyn Sink<(), Error = ()> + Sync + Send + Unpin + 'a>,
+}
+
+fn new_foo<'a>(
+    s: impl StreamExt<Item = ()> + Sink<(), Error = ()> + Sync + Send + Unpin + 'a,
+) -> Foo<'a> {
+    let (sink, stream) = s.split();
+    Foo {
+        stream: Box::new(stream),
+        sink: Box::new(sink),
+    }
+}
+
 #[test]
 fn test_container_new() {
     Container::new("".as_bytes());
@@ -60,7 +78,8 @@ fn test_adder() {
 
 #[tokio::test]
 async fn hrtb() {
-    wrapper(add_one).await
+    let result = wrapper(add_ten).await;
+    println!("{:?}", result)
 }
 
 #[tokio::test]
@@ -152,6 +171,9 @@ async fn test_stream_sink() {
     stream_it(sink).await.unwrap();
 }
 
+#[tokio::test]
+async fn test_handler_callback() {}
+
 async fn stream_it(
     sink: impl Sink<i32, Error = Box<dyn std::error::Error>> + Unpin,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -171,3 +193,27 @@ pub struct StreamForwarder<S: Stream> {
         mpsc::Sender<S::Item>,
     >,
 }
+
+#[tokio::test]
+async fn test_doit() {
+    doit(|v| {
+        Box::pin(async move {
+            println!("{:?}", v);
+        })
+    })
+    .await
+}
+
+// #[tokio::test]
+// async fn test_drill() {
+//     let cnac = Struct;
+//     cnac.async_borrow_drill({
+//         fn it<'lt>(drill: &'lt Drill) -> Pin<Box<dyn 'lt + Future<Output = ()>>> {
+//             Box::pin(async move {
+//                 drop(drill);
+//             })
+//         }
+//         it
+//     })
+//     .await;
+// }
