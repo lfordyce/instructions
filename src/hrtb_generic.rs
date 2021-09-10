@@ -101,6 +101,54 @@ pub struct Toolset {
 
 pub struct Drill;
 
+pub trait Helper<'a, T> {
+    type Output: Send + 'a;
+    fn call(self, arg: &'a T) -> Self::Output;
+}
+
+impl<'a, D: 'a, F, T: 'a> Helper<'a, T> for F
+where
+    F: FnOnce(&'a T) -> D,
+    D: Send,
+{
+    type Output = D;
+
+    fn call(self, arg: &'a T) -> Self::Output {
+        self(arg)
+    }
+}
+
+// pub trait HelperSystem: Send + 'static {
+//     fn call<'a>(&'a self, arg: &'a Vec<String>) -> Vec<&'a str>;
+// }
+//
+// impl<S> HelperSystem for S
+// where
+//     S: for<'a> Helper<'a, Vec<String>>,
+// {
+//     fn call<'a>(&'a self, arg: &'a Vec<String>) -> Vec<&'a str> {
+//         self.call(arg)
+//     }
+// }
+
+// pub fn par_iter_with_setup<T, S, M, F>(t: T, setup: S, closure: F)
+// where
+//     T: Send + 'static,
+//     M: Send,
+//     // for<'a> S: Helper<'a, T, Output = M> + Send + 'static,
+//     S: for<'a> Helper<'a, T, Output = M> + Send + 'static,
+//     F: FnOnce(M) + Send + 'static,
+// {
+//     std::thread::spawn(move || {
+//         let middle = setup.call(&t);
+//         closure(middle);
+//     });
+// }
+
+pub fn setup<'a>(v: &'a Vec<String>) -> Vec<&'a str> {
+    v.iter().map(|s| s.as_str()).collect::<Vec<&str>>()
+}
+
 // impl Struct {
 //     async fn read(self: &'_ Self) -> &'_ Read {
 //         &Read {
@@ -117,3 +165,52 @@ pub struct Drill;
 //         f(&read.toolset.drill).await
 //     }
 // }
+
+//idea here is AsyncClosure argument and return future have the same lifetime
+trait AsyncClosure<'a, Argument, Output> {
+    type Fut: Future<Output = Output> + 'a;
+    fn call(self, arg: &'a Argument) -> Self::Fut;
+}
+
+//blanket impl
+impl<'a, Fu: 'a, F, Argument: 'static, Output> AsyncClosure<'a, Argument, Output> for F
+where
+    F: FnOnce(&'a Argument) -> Fu,
+    Fu: Future<Output = Output> + 'a,
+{
+    type Fut = Fu;
+    fn call(self, rt: &'a Argument) -> Fu {
+        self(rt)
+    }
+}
+
+async fn with_async_closure<C, R>(c: C) -> R
+where
+    for<'a> C: AsyncClosure<'a, u8, R>,
+{
+    let a = 3; //closure borrows this
+    c.call(&a) //returned future borrows it as well
+        .await
+    //no longer borrowed here
+}
+
+async fn function_target(arg: &u8) {
+    println!("{:?}", arg);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // #[test]
+    // fn basic_test() {
+    //     let v: Vec<String> = vec!["gus".to_string(), "gus2".to_string()];
+    //
+    //     par_iter_with_setup(v, setup, |iter| ());
+    // }
+
+    #[tokio::test]
+    async fn test_async_closure_thing() {
+        with_async_closure(function_target).await;
+    }
+}

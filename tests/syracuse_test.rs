@@ -1,5 +1,8 @@
 use derive_more::From;
+use futures::future::BoxFuture;
 use num_traits::{identities::Zero, PrimInt};
+use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use std::io;
 use std::ops::{Add, Div, Mul, Rem};
 use thiserror::Error;
@@ -74,6 +77,32 @@ impl Shared for E {
     }
 }
 
+#[derive(Debug)]
+pub struct UpdateWithCx<R, Upd> {
+    pub requester: R,
+    pub update: Upd,
+}
+
+pub trait UpdateWithCxRequesterType {
+    type Requester;
+}
+
+impl<R, Upd> UpdateWithCxRequesterType for UpdateWithCx<R, Upd> {
+    type Requester = R;
+}
+
+impl<R> UpdateWithCx<R, Message>
+where
+    R: Requester,
+{
+    pub async fn answer<T>(&self, text: T)
+    where
+        T: Into<String> + Display,
+    {
+        println!("ANSWER FOUND: {}", text);
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum RequestError {
     #[error("An I/O error: {0}")]
@@ -83,10 +112,40 @@ pub enum RequestError {
 /// A type returned from a FSM (sub)transition function.
 pub type TransitionOut<D, E = crate::RequestError> = Result<DialogueStage<D>, E>;
 
+pub trait SubtransitionOutputType {
+    type Output;
+    type Error;
+}
+
+impl<D, E> SubtransitionOutputType for TransitionOut<D, E> {
+    type Output = D;
+    type Error = E;
+}
+
+/// An input passed into a FSM (sub)transition function.
+pub type TransitionIn<R> = UpdateWithCx<R, Message>;
+
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
 pub enum DialogueStage<D> {
     Next(D),
     Exit,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct Message {
+    /// Unique message identifier inside this chat.
+    #[serde(rename = "message_id")]
+    pub id: i32,
+
+    /// Date the message was sent in Unix time.
+    pub date: i32,
+}
+
+impl Message {
+    pub fn text(&self) -> Option<&str> {
+        Some("23")
+        // None
+    }
 }
 
 pub fn next<Dialogue, State, E>(new_state: State) -> TransitionOut<Dialogue, E>
@@ -96,23 +155,23 @@ where
     Ok(DialogueStage::Next(Dialogue::from(new_state)))
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StartState;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HaveNumberState {
     pub number: i32,
 }
 
 impl From<HaveNumberState> for Dialogue {
-    fn from(a: HaveNumberState) -> Self {
-        Self::HaveNumber(a)
+    fn from(original: HaveNumberState) -> Self {
+        Self::HaveNumber(original)
     }
 }
 
 impl From<StartState> for Dialogue {
-    fn from(s: StartState) -> Self {
-        Self::Start(s)
+    fn from(original: StartState) -> Self {
+        Self::Start(original)
     }
 }
 
@@ -137,6 +196,164 @@ impl Default for Dialogue {
 //         }
 //     }
 // }
+
+/// Represents a transition function of a dialogue FSM.
+pub trait Transition: Sized {
+    type Aux;
+    type Error;
+    type Requester;
+
+    /// Turns itself into another state, depending on the input message.
+    ///
+    /// `aux` will be passed to each subtransition function.
+    fn react(
+        self,
+        cx: TransitionIn<Self::Requester>,
+        aux: Self::Aux,
+    ) -> BoxFuture<'static, TransitionOut<Self, Self::Error>>;
+}
+
+pub trait Subtransition
+where
+    Self::Dialogue: Transition<Aux = Self::Aux>,
+{
+    type Aux;
+    type Dialogue;
+    type Error;
+    type Requester;
+
+    /// Turns itself into another state, depending on the input message.
+    ///
+    /// `aux` is something that is provided by the call side, for example,
+    /// message's text.
+    fn react(
+        self,
+        cx: TransitionIn<Self::Requester>,
+        aux: Self::Aux,
+    ) -> BoxFuture<'static, TransitionOut<Self::Dialogue, Self::Error>>;
+}
+
+impl Transition for Dialogue {
+    type Aux = <StartState as Subtransition>::Aux;
+    type Error = <StartState as Subtransition>::Error;
+    type Requester = <StartState as Subtransition>::Requester;
+
+    fn react(
+        self,
+        cx: TransitionIn<Self::Requester>,
+        aux: Self::Aux,
+    ) -> BoxFuture<'static, TransitionOut<Self, Self::Error>> {
+        Box::pin(async move {
+            match self {
+                Dialogue::Start(state) => Subtransition::react(state, cx, aux).await,
+                Dialogue::HaveNumber(state) => Subtransition::react(state, cx, aux).await,
+            }
+        })
+    }
+}
+
+pub trait Requester {}
+
+#[derive(Default)]
+pub struct Bot {}
+
+impl Requester for Bot {}
+
+impl Subtransition for StartState {
+    type Aux = String;
+    type Dialogue = <TransitionOut<Dialogue> as SubtransitionOutputType>::Output;
+    type Error = <TransitionOut<Dialogue> as SubtransitionOutputType>::Error;
+    type Requester = <TransitionIn<Bot> as UpdateWithCxRequesterType>::Requester;
+
+    fn react(
+        self,
+        cx: TransitionIn<Self::Requester>,
+        aux: Self::Aux,
+    ) -> BoxFuture<'static, TransitionOut<Self::Dialogue, Self::Error>> {
+        async fn start(
+            state: StartState,
+            cx: TransitionIn<Bot>,
+            ans: String,
+        ) -> TransitionOut<Dialogue> {
+            if let Ok(number) = ans.parse() {
+                cx.answer(format!(
+                    "Remembered number {}. Now use /get or /reset",
+                    number
+                ))
+                .await;
+                next(HaveNumberState { number })
+            } else {
+                cx.answer("Please, send me a number").await;
+                next(state)
+            }
+        }
+        futures::future::FutureExt::boxed(start(self, cx, aux))
+    }
+}
+
+impl Subtransition for HaveNumberState {
+    type Aux = String;
+    type Dialogue = <TransitionOut<Dialogue> as SubtransitionOutputType>::Output;
+    type Error = <TransitionOut<Dialogue> as SubtransitionOutputType>::Error;
+    type Requester = <TransitionIn<Bot> as UpdateWithCxRequesterType>::Requester;
+
+    fn react(
+        self,
+        cx: TransitionIn<Self::Requester>,
+        aux: Self::Aux,
+    ) -> BoxFuture<'static, TransitionOut<Self::Dialogue, Self::Error>> {
+        async fn have_number(
+            state: HaveNumberState,
+            cx: TransitionIn<Bot>,
+            ans: String,
+        ) -> TransitionOut<Dialogue> {
+            let num = state.number;
+
+            if ans.starts_with("/get") {
+                cx.answer(format!("Here is your number: {}", num)).await;
+                next(state)
+            } else if ans.starts_with("/reset") {
+                cx.answer("Resetted number").await;
+                next(StartState)
+            } else {
+                cx.answer("Please, send /get or /reset").await;
+                next(state)
+            }
+        }
+        futures::future::FutureExt::boxed(have_number(self, cx, aux))
+    }
+}
+
+async fn handle_message(
+    cx: UpdateWithCx<Bot, Message>,
+    dialogue: Dialogue,
+) -> TransitionOut<Dialogue> {
+    match cx.update.text().map(ToOwned::to_owned) {
+        None => {
+            cx.answer("Send me a text message.").await;
+            next(dialogue)
+        }
+        Some(ans) => dialogue.react(cx, ans).await,
+    }
+}
+
+#[derive(Debug)]
+pub struct DialogueWithCx<R, Upd, D, E> {
+    pub cx: UpdateWithCx<R, Upd>,
+    pub dialogue: Result<D, E>,
+}
+
+impl<Upd, R, D, E> DialogueWithCx<R, Upd, D, E> {
+    /// Creates a new instance with the provided fields.
+    pub fn new(cx: UpdateWithCx<R, Upd>, dialogue: D) -> Self {
+        Self {
+            cx,
+            dialogue: Ok(dialogue),
+        }
+    }
+}
+
+type In = DialogueWithCx<Bot, Message, Dialogue, RequestError>;
 
 #[test]
 fn syracuse_test() {
@@ -171,4 +388,24 @@ fn test_transition() {
     // let result: TransitionOut<Dialogue> = next(HaveNumberState { number: 35 });
     let result: TransitionOut<Dialogue> = next(Dialogue::default());
     println!("{:?}", result);
+}
+
+#[tokio::test]
+async fn test_transitions() {
+    let d: In = DialogueWithCx::new(
+        UpdateWithCx {
+            requester: Bot::default(),
+            update: Message::default(),
+        },
+        Dialogue::default(),
+    );
+
+    match handle_message(d.cx, d.dialogue.unwrap()).await.unwrap() {
+        DialogueStage::Next(new_dialogue) => {
+            println!("{:?}", new_dialogue);
+        }
+        DialogueStage::Exit => {
+            println!("Dialogue finished, exiting...")
+        }
+    }
 }

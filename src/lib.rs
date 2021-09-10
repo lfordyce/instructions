@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -328,3 +329,91 @@ impl<P: Send> FromRequest for (P,) {
 // {
 //     callback.call()
 // }
+
+pub trait Manager {
+    fn update(&self, n: &i32);
+}
+
+pub trait Execute<'a> {
+    fn new(n: &'a i32) -> Self;
+}
+
+pub struct GenericManager<T> {
+    _phantom_t: PhantomData<T>,
+}
+
+pub struct BorrowData<'a> {
+    pub data: &'a i32,
+}
+
+impl<'a, 'b: 'a> Execute<'b> for BorrowData<'a> {
+    fn new(n: &'b i32) -> Self {
+        BorrowData { data: n }
+    }
+}
+
+pub trait WithData<'a> {
+    type Data: Execute<'a>;
+}
+
+struct WithBorrowData;
+
+impl<'a> WithData<'a> for WithBorrowData {
+    type Data = BorrowData<'a>;
+}
+
+impl<T: for<'a> WithData<'a>> Manager for GenericManager<T> {
+    fn update(&self, n: &i32) {
+        T::Data::new(n);
+    }
+}
+
+pub struct Resources;
+
+pub trait SystemData<'a> {
+    fn setup(res: &Resources);
+    fn fetch<'b>(res: &'b Resources) -> Self;
+}
+
+pub trait PrefabData<'a> {
+    type SystemData: SystemData<'a>;
+}
+
+pub trait SystemDataSetup {
+    fn setup(&self, res: &mut Resources);
+}
+
+impl<T> SystemDataSetup for PhantomData<T>
+where
+    for<'a> T: SystemData<'a>,
+{
+    fn setup(&self, res: &mut Resources) {
+        T::setup(res);
+    }
+}
+
+pub fn register_component<T>()
+where
+    T: 'static,
+    for<'a> T: PrefabData<'a>,
+    for<'a, 'b> <T as PrefabData<'a>>::SystemData: SystemData<'b>,
+{
+    let _ = Box::new(PhantomData::<T::SystemData>) as Box<dyn SystemDataSetup>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_trait_not_general_enough() {
+        let mut managers: Vec<Box<dyn Manager>> = vec![];
+        managers.push(Box::new(GenericManager::<WithBorrowData> {
+            _phantom_t: PhantomData,
+        }));
+        let n = 5;
+        for m in &managers {
+            m.update(&n);
+        }
+    }
+}

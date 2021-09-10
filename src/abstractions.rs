@@ -1,6 +1,10 @@
 use futures::future::BoxFuture;
+use std::borrow::{Borrow, Cow};
+use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Error, Formatter};
+use std::io::Read;
 use std::marker::PhantomData;
+use std::ops::Index;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -445,3 +449,178 @@ pub fn create_foos() -> Box<dyn FooBase> {
 
 // let foos1: Vec<Box<dyn Foo>> = vec![f1];
 // let foos2: Vec<&Box<dyn Foo>> = vec![&f2];
+
+pub mod private {
+    pub trait Sealed {}
+}
+
+pub trait DataTrait: private::Sealed {}
+
+pub trait TraitA: private::Sealed {
+    type Data;
+}
+
+pub struct UserFriendlyDataStructure<A: TraitA> {
+    pub internal_data: A::Data,
+    _a: PhantomData<A>,
+}
+
+impl<A, D> Borrow<D> for UserFriendlyDataStructure<A>
+where
+    A: TraitA<Data = D>,
+    D: DataTrait,
+{
+    fn borrow(&self) -> &A::Data {
+        &self.internal_data
+    }
+}
+
+pub fn important_function<A: TraitA, T: Borrow<A::Data>>(data: &T) {
+    let internal_data = data.borrow();
+
+    // Do something important
+}
+
+pub trait SomeTrait {
+    type Associated;
+}
+
+// pub trait Trait: Index<<Self as Trait>::Associated> {
+//     type Associated;
+// }
+impl<T> Index<T> for dyn SomeTrait<Associated = T> {
+    type Output = str;
+
+    fn index(&self, index: T) -> &Self::Output {
+        "my output"
+    }
+}
+
+#[derive(Debug)]
+enum Fruit {
+    Apple = 1,
+    Orange = 2,
+}
+
+struct ReadFruit<T: Read>(T);
+
+impl<T: Read> TryFrom<ReadFruit<T>> for Fruit {
+    type Error = ();
+
+    fn try_from(reader: ReadFruit<T>) -> Result<Fruit, ()> {
+        match reader.0.bytes().next() {
+            Some(Ok(x)) if x == Fruit::Apple as u8 => Ok(Fruit::Apple),
+            Some(Ok(x)) if x == Fruit::Orange as u8 => Ok(Fruit::Orange),
+            _ => Err(()),
+        }
+    }
+}
+
+pub struct TableCell<'data> {
+    pub data: Cow<'data, str>,
+    pub col_span: usize,
+    pub pad_content: bool,
+}
+
+impl<'data> TableCell<'data> {
+    pub fn new<T>(data: T) -> TableCell<'data>
+    where
+        T: ToString,
+    {
+        return TableCell {
+            data: data.to_string().into(),
+            col_span: 1,
+            pad_content: true,
+        };
+    }
+}
+
+struct ReadTableCell<T: ToString>(T);
+
+impl<'data> Display for TableCell<'data> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.data)
+    }
+}
+
+impl<'data, T> From<ReadTableCell<T>> for TableCell<'data>
+where
+    T: ToString,
+{
+    fn from(other: ReadTableCell<T>) -> Self {
+        TableCell::new(other.0)
+    }
+}
+
+struct Holder<F, T> {
+    data: T,
+    f: F,
+}
+
+trait FIsAFunction<F, T, P> {
+    fn call_f(&self, arg: P);
+}
+
+impl<F, T, P> FIsAFunction<F, T, P> for Holder<F, T>
+where
+    T: Copy,
+    F: Fn(T, P),
+{
+    fn call_f(&self, arg: P) {
+        (self.f)(self.data, arg);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    pub struct TestData(u32);
+
+    impl super::private::Sealed for TestData {}
+
+    impl DataTrait for TestData {}
+
+    pub struct TestProvider;
+
+    impl super::private::Sealed for TestProvider {}
+
+    impl TraitA for TestProvider {
+        type Data = TestData;
+    }
+
+    #[test]
+    fn basic_test() {
+        let ufds: UserFriendlyDataStructure<TestProvider> = UserFriendlyDataStructure {
+            internal_data: TestData(100),
+            _a: PhantomData::default(),
+        };
+
+        important_function::<TestProvider, _>(&ufds);
+    }
+
+    #[test]
+    fn test_new_type_try_from() {
+        let bytes = b"\x01";
+        let fruit = Fruit::try_from(ReadFruit(&bytes[..])).unwrap();
+        println!("The fruit is: {:?}", fruit);
+    }
+
+    #[test]
+    fn test_new_type_try_from_table_cell() {
+        let tc = TableCell::from(ReadTableCell("some_test"));
+        println!("{}", tc);
+    }
+
+    #[test]
+    fn test_trait_bound_func() {
+        fn callback(x: u32, y: &str) {
+            println!("I was given {:?} and {:?}", x, y)
+        }
+        let holder = Holder {
+            data: 1u32,
+            f: callback,
+        };
+        holder.call_f("hello!");
+    }
+}

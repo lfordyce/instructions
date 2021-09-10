@@ -75,6 +75,3 @@ impl<'a> Property<'a> for SomeElement {
         "my_data_type"
     }
 }
-
-#[test]
-fn test_lifetime_stuff() {}
