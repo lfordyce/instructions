@@ -198,6 +198,56 @@ async fn function_target(arg: &u8) {
     println!("{:?}", arg);
 }
 
+async fn connection_fn(conn: &mut Endpoint) -> Result<Channel, tonic::transport::Error> {
+    conn.connect().await
+}
+
+/// Hide the returned future's type so that we can use HRTBs to specify lifetimes.
+///
+// let mut endpoint = Channel::from_static(&CONFIG.grpc_server.endpoint)
+//     .keep_alive_timeout(Duration::from_millis(
+//         CONFIG.grpc_server.keep_alive_timeout.milliseconds,
+//     ))
+//     .connect_timeout(Duration::from_millis(
+//         CONFIG.grpc_server.connect_timeout.milliseconds,
+//     ));
+// let channel = retry(&mut endpoint, connection_fn).await;
+
+// trait AsyncFnMut<A> {
+//     type Output;
+//     type Future: Future<Output = Self::Output>;
+//
+//     fn call(&mut self, args: A) -> Self::Future;
+// }
+//
+// impl<Arg, F, Fut, R> AsyncFnMut<(Arg,)> for F
+//     where
+//         F: FnMut(Arg) -> Fut,
+//         Fut: Future<Output = R>,
+// {
+//     type Output = R;
+//     type Future = Fut;
+//
+//     fn call(&mut self, (arg1,): (Arg,)) -> Self::Future {
+//         self(arg1)
+//     }
+// }
+//
+// async fn retry<F>(conn: &mut Endpoint, mut cb: F) -> Channel
+//     where
+//         F: for<'a> AsyncFnMut<(&'a mut Endpoint,), Output = Result<Channel, tonic::transport::Error>>,
+// {
+//     loop {
+//         match cb.call((conn,)).await {
+//             Err(e) => {
+//                 tracing::error!("endpoint connection failure: {}", e);
+//                 tokio::time::sleep(Duration::from_secs(1)).await;
+//             }
+//             Ok(channel) => return channel,
+//         }
+//     }
+// }
+
 #[cfg(test)]
 mod tests {
     use super::*;

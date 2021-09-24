@@ -30,8 +30,8 @@ pub trait Watcher<T>: Send + Sync + 'static {
 
 #[async_trait]
 pub trait Binder<E> {
-    type Steam: futures::Stream<Item = Result<Self::RW, E>>;
     type RW: tokio::io::AsyncRead + tokio::io::AsyncWrite;
+    type Steam: futures::Stream<Item = Result<Self::RW, E>>;
 
     async fn bind(&self) -> Self::Steam;
 }
