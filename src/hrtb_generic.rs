@@ -1,4 +1,8 @@
+use futures::channel::mpsc;
+use futures::FutureExt;
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use std::future::Future;
+use std::io;
 use std::pin::Pin;
 
 pub struct X {
@@ -198,9 +202,9 @@ async fn function_target(arg: &u8) {
     println!("{:?}", arg);
 }
 
-async fn connection_fn(conn: &mut Endpoint) -> Result<Channel, tonic::transport::Error> {
-    conn.connect().await
-}
+// async fn connection_fn(conn: &mut Endpoint) -> Result<Channel, tonic::transport::Error> {
+//     conn.connect().await
+// }
 
 /// Hide the returned future's type so that we can use HRTBs to specify lifetimes.
 ///
@@ -248,6 +252,165 @@ async fn connection_fn(conn: &mut Endpoint) -> Result<Channel, tonic::transport:
 //     }
 // }
 
+trait WhatIWant<'a> {
+    type Output;
+    type Error: std::error::Error;
+    type Future: Future<Output = Result<Self::Output, Self::Error>> + 'a;
+
+    fn read(&'a mut self) -> Self::Future;
+}
+
+struct Connection;
+
+impl Connection {
+    async fn do_read(&mut self) -> Result<(), io::Error> {
+        // reading from a underlaying stream (tcp stream)
+        Ok(())
+    }
+}
+
+impl<'a> WhatIWant<'a> for Connection {
+    type Output = ();
+    type Error = io::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Output, Self::Error>> + 'a>>;
+
+    fn read(&'a mut self) -> Self::Future {
+        Box::pin(self.do_read())
+    }
+}
+
+// async fn use_trait<'a, C: 'a>(mut conn: C) -> Result<(), io::Error>
+// where
+//     C: WhatIWant<'a, Output = (), Error = io::Error>,
+// {
+//     if let Ok(_) = conn.read().await {
+//         // do something
+//     }
+//
+//     Ok(())
+// }
+
+trait DataSource<'a> {
+    fn get_value(&'a self, index: usize) -> &'a str;
+}
+
+struct OddOrEven {
+    odd: String,
+    even: String,
+}
+
+impl<'a> DataSource<'a> for OddOrEven {
+    fn get_value(&'a self, index: usize) -> &'a str {
+        if index % 2 == 0 {
+            self.even.as_str()
+        } else {
+            self.odd.as_str()
+        }
+    }
+}
+
+impl<'a, F: Fn(usize) -> &'a str> DataSource<'a> for F {
+    fn get_value(&'a self, n: usize) -> &'a str {
+        (self)(n)
+    }
+}
+
+pub enum Arg {
+    Predicate(Box<dyn Fn() -> bool>),
+}
+
+// usage: Arg::from(|| true);
+impl<T: 'static + Fn() -> bool> From<T> for Arg {
+    fn from(predicate: T) -> Self {
+        Arg::Predicate(Box::new(predicate))
+    }
+}
+
+trait Object {}
+
+struct HolderBox<'lifetime> {
+    objects: Vec<Box<dyn Object + 'lifetime>>,
+}
+
+impl<'lifetime> HolderBox<'lifetime> {
+    fn add_object<T: Object + 'lifetime>(self: &'_ mut Self, object: T) {
+        self.objects.push(Box::new(object));
+    }
+}
+
+struct HolderNoBox<'lifetime> {
+    objects: Vec<&'lifetime (dyn Object + 'lifetime)>,
+}
+
+impl<'lifetime> HolderNoBox<'lifetime> {
+    fn add_object<T: Object + 'lifetime>(self: &'_ mut Self, object: &'lifetime T) {
+        self.objects.push(object);
+    }
+}
+
+struct DBConnection;
+#[derive(Debug)]
+struct DBError;
+
+impl DBConnection {
+    async fn query(&'_ mut self, key: &'_ str) -> Result<usize, DBError> {
+        Ok(key.len())
+    }
+}
+
+async fn transaction<T: 'static, F, C>(
+    connection: &'_ mut DBConnection,
+    ctx: C,
+    fun: F,
+) -> Result<T, DBError>
+where
+    F: for<'c> Fn(
+        &'c mut DBConnection,
+        &'c C,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<T>, DBError>> + 'c>>,
+{
+    // Retry the transaction function as long as it returns `None`
+    loop {
+        let response: Option<T> = fun(connection, &ctx).await?;
+        match response {
+            None => continue, // Retry the transaction
+            Some(value) => {
+                return Ok(value);
+            }
+        }
+    }
+}
+
+async fn test_transaction() {
+    let key = "database_key".to_string();
+    // The lambda returns a Future which is tied to the lifetime of "key" and
+    // "connection", but the output type of that Future is tied to neither
+    let r = transaction(&mut DBConnection {}, &key, |connection, key| {
+        // We want to move a reference to "key" into the Future, not "key" itself
+        async move {
+            let value = connection.query(key).await?;
+            Ok(Some(value))
+        }
+        .boxed()
+    })
+    .await;
+
+    let key_size = r.unwrap();
+    assert_eq!(12, key_size)
+}
+
+async fn foo(
+    v: Vec<(
+        Pin<Box<dyn Sink<u8, Error = mpsc::SendError>>>,
+        Pin<Box<dyn Stream<Item = u8>>>,
+    )>,
+) {
+    for (mut tx, mut rx) in v {
+        let _ = tx.send(0);
+        let _ = rx.next().await;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,8 +422,37 @@ mod tests {
     //     par_iter_with_setup(v, setup, |iter| ());
     // }
 
+    #[test]
+    fn test_odd_or_even() {
+        let oe = OddOrEven {
+            odd: "a".into(),
+            even: "b".into(),
+        };
+
+        dbg!(oe.get_value(0));
+        dbg!(oe.get_value(1));
+    }
+
     #[tokio::test]
     async fn test_async_closure_thing() {
         with_async_closure(function_target).await;
     }
+
+    // #[tokio::test]
+    // async fn test_async_trait_lifetime() {
+    //     let con = Connection;
+    //     use_trait(con)
+    // }
+
+    #[tokio::test]
+    async fn test_closure_async_retry() {
+        test_transaction().await;
+    }
+
+    // #[ignore]
+    // #[tokio::test]
+    // async fn test_associated_type_async_func_param() {
+    //     let (tx, rx) = mpsc::channel(32);
+    //     foo(vec![(Box::pin(tx), Box::pin(rx))]).await;
+    // }
 }

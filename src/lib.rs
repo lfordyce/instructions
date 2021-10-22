@@ -7,8 +7,12 @@ use std::time::SystemTime;
 use tokio::macros::support::Future;
 
 pub mod abstractions;
+pub mod currying;
 pub mod diy_stream;
 pub mod factory;
+pub mod gate;
+pub mod health;
+mod health_alt;
 pub mod hrtb_generic;
 pub mod line_writer;
 pub mod patterns;
@@ -34,6 +38,21 @@ pub trait Binder<E> {
     type Steam: futures::Stream<Item = Result<Self::RW, E>>;
 
     async fn bind(&self) -> Self::Steam;
+}
+
+trait Receiver {
+    type Data;
+    type Transformer;
+    fn on_emit(self, data: Self::Data);
+}
+
+trait Signal {
+    type Data;
+    type RecType: Receiver;
+
+    fn emit(&self, data: Self::Data);
+    fn connect(&mut self, rec: <Self::RecType as Receiver>::Transformer) -> Self::RecType;
+    fn disconnect(&mut self, i: usize);
 }
 
 pub struct SomeType;
@@ -399,6 +418,40 @@ where
     for<'a, 'b> <T as PrefabData<'a>>::SystemData: SystemData<'b>,
 {
     let _ = Box::new(PhantomData::<T::SystemData>) as Box<dyn SystemDataSetup>;
+}
+
+trait Key {
+    type Char;
+}
+
+trait IntoKey {
+    type Key: Key;
+
+    fn into_key(self) -> Self::Key;
+}
+
+impl<'a, T> Key for &'a [T] {
+    type Char = T;
+}
+
+impl<K: Key> IntoKey for K {
+    type Key = Self;
+
+    fn into_key(self) -> Self::Key {
+        self
+    }
+}
+
+impl<'a, T, const SIZE: usize> IntoKey for &'a [T; SIZE] {
+    type Key = &'a [T];
+
+    fn into_key(self) -> Self::Key {
+        &self[..]
+    }
+}
+
+fn key_fn<K: IntoKey>(key: K) {
+    let key = key.into_key();
 }
 
 #[cfg(test)]
