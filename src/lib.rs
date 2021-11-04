@@ -14,9 +14,11 @@ pub mod gate;
 pub mod health;
 mod health_alt;
 pub mod hrtb_generic;
+pub mod lifetime_stuff;
 pub mod line_writer;
 pub mod patterns;
 pub mod plugin;
+mod queuer;
 pub mod ray_tracing;
 
 #[async_trait]

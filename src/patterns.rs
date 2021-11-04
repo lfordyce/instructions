@@ -1,4 +1,5 @@
 use crate::BoolTrait;
+use serde::Deserialize;
 use std::sync::Arc;
 
 pub struct Context<S, D>
@@ -175,6 +176,85 @@ impl<'window> Phi<'window> {
     }
 }
 
+#[derive(Debug)]
+pub struct TestThingy<'a> {
+    label: &'a str,
+}
+
+const TEST_VALUES: [TestThingy; 3] = [
+    TestThingy { label: "one" },
+    TestThingy { label: "two" },
+    TestThingy { label: "three" },
+];
+
+pub fn value_for_num(num: &str) -> Option<&'static TestThingy<'static>> {
+    TEST_VALUES.iter().find(|value| value.label == num)
+}
+
+pub fn test_out_thingy() {
+    let tmp_val = String::from("two");
+    if let Some(test_thingy) = value_for_num(&tmp_val) {
+        println!("test_thingy: {:?}", test_thingy);
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct Analysis<A, S> {
+    algorithm: A,
+    search_space: S,
+}
+
+impl<A, S> Analysis<A, S>
+where
+    A: Algorithm,
+    S: SearchSpace,
+{
+    fn solve(&self) -> f64 {
+        self.algorithm.evaluate(self.search_space.point())
+    }
+}
+
+trait Algorithm {
+    fn evaluate(&self, point: f64) -> f64;
+}
+
+trait SearchSpace {
+    fn point(&self) -> f64;
+}
+
+#[derive(Deserialize, Debug)]
+struct Efficient {
+    param: f64,
+}
+
+impl Algorithm for Efficient {
+    fn evaluate(&self, point: f64) -> f64 {
+        self.param * point
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct SlightlySlower {
+    param: f64,
+}
+
+impl Algorithm for SlightlySlower {
+    fn evaluate(&self, point: f64) -> f64 {
+        self.param * 0.5 * point
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct SquareGrid {
+    param: f64,
+}
+
+impl SearchSpace for SquareGrid {
+    fn point(&self) -> f64 {
+        self.param
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,5 +285,35 @@ mod tests {
 
         let p2 = p1;
         eprintln!("{:p} =?= {:p}", &p2.loader.0, p2.font.as_ref().unwrap().0);
+    }
+
+    #[test]
+    fn test_lifetime_thingy() {
+        test_out_thingy();
+    }
+
+    #[test]
+    fn test_polymorphic_generics() {
+        // This is how I kinda want my configurator to be parsed (or something similar)
+        // let input = r#"
+        // {
+        //     "algorithm": {"Efficient": { "param": 0.1}},
+        //     "search_space": {"SquareGrid": {"param": 0.1}}
+        // }
+        // "#;
+
+        // This works, but I'd like to specify the variants of algorithm and search space
+        let input = r#"
+        {
+            "algorithm": {"param": 0.5},
+            "search_space": {"param": 0.5}
+        }
+        "#;
+
+        // This lets me parse a monomorphisized analysis struct..
+        let result: Analysis<SlightlySlower, SquareGrid> = serde_json::from_str(input).unwrap();
+
+        // But how to gracefully dispatch different variants?
+        println!("Result of complex analysis was: {}", result.solve());
     }
 }
