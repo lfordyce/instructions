@@ -1,4 +1,5 @@
 use futures::channel::mpsc;
+use futures::stream;
 use futures::FutureExt;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use std::future::Future;
@@ -105,6 +106,26 @@ pub struct Toolset {
 
 pub struct Drill;
 
+// impl Struct {
+//     async fn read(self: &'_ Self) -> &'_ Read {
+//         &Read {
+//             toolset: Toolset { drill: Drill },
+//         }
+//     }
+//
+//     pub async fn async_borrow_drill<C, Output>(self: &'_ Self, f: C) -> Output
+//     where
+//         for<'any> C: FnOnce<(&'any Drill,), Output = Pin<Box<dyn 'any + Future<Output = Output>>>>,
+//         for<'any> Pin<Box<dyn 'any + Future<Output = Output>>>: Future<Output = Output>,
+//         // for<'any>
+//         //     <C as FnOnce<(&'any Drill,)>>::Output : Future<Output = Output>
+//         // ,
+//     {
+//         let read = self.read().await; // RwLock Read handle
+//         f(&read.toolset.drill).await
+//     }
+// }
+
 pub trait Helper<'a, T> {
     type Output: Send + 'a;
     fn call(self, arg: &'a T) -> Self::Output;
@@ -152,23 +173,6 @@ where
 pub fn setup<'a>(v: &'a Vec<String>) -> Vec<&'a str> {
     v.iter().map(|s| s.as_str()).collect::<Vec<&str>>()
 }
-
-// impl Struct {
-//     async fn read(self: &'_ Self) -> &'_ Read {
-//         &Read {
-//             toolset: Toolset { drill: Drill },
-//         }
-//     }
-//
-//     pub async fn async_borrow_drill<C, Output>(self: &'_ Self, f: C) -> Output
-//     where
-//         for<'any> C: FnOnce<(&'any Drill,), Output = Pin<Box<dyn 'any + Future<Output = Output>>>>,
-//         for<'any> Pin<Box<dyn 'any + Future<Output = Output>>>: Future<Output = Output>,
-//     {
-//         let read = self.read().await; // RwLock Read handle
-//         f(&read.toolset.drill).await
-//     }
-// }
 
 //idea here is AsyncClosure argument and return future have the same lifetime
 trait AsyncClosure<'a, Argument, Output> {
@@ -411,6 +415,91 @@ async fn foo(
     }
 }
 
+struct Services {
+    s1: Box<dyn for<'a> FnOnce(&'a mut Vec<usize>) -> Pin<Box<dyn Future<Output = ()> + 'a>>>,
+}
+
+impl Services {
+    fn new(
+        f: Box<dyn for<'a> FnOnce(&'a mut Vec<usize>) -> Pin<Box<dyn Future<Output = ()> + 'a>>>,
+    ) -> Self {
+        Services { s1: f }
+    }
+}
+
+struct Svc<F> {
+    s1: F,
+}
+
+impl<F, G> Svc<F>
+where
+    F: FnOnce(Vec<usize>) -> G,
+    G: Future<Output = Vec<usize>>,
+{
+    fn new(f: F) -> Self {
+        Svc { s1: f }
+    }
+}
+trait Workaround {
+    type Fn: FnOnce(Vec<usize>) -> Self::Fut;
+    type Fut: Future<Output = Vec<usize>>;
+    fn fun(self) -> Self::Fn;
+}
+
+impl<F, G> Workaround for Svc<F>
+where
+    F: FnOnce(Vec<usize>) -> G,
+    G: Future<Output = Vec<usize>>,
+{
+    type Fn = F;
+    type Fut = G;
+
+    fn fun(self) -> Self::Fn {
+        self.s1
+    }
+}
+
+#[derive(Clone, Copy)]
+enum NumberOperation {
+    AddOne,
+    MinusOne,
+}
+
+fn service(op: NumberOperation) -> impl Workaround {
+    Svc::new(move |mut numbers| async move {
+        for n in &mut numbers {
+            match op {
+                NumberOperation::AddOne => *n = *n + 1,
+                NumberOperation::MinusOne => *n = *n - 1,
+            };
+        }
+        numbers
+    })
+}
+
+struct Pager<T, F>
+where
+    F: Future<Output = T> + 'static,
+{
+    fetch: fn(i32) -> F,
+}
+
+impl<T, F> Pager<T, F>
+where
+    // F: Future<Output = T> + 'static, // with static the ('a) lifetime can be removed
+    F: Future<Output = T>,
+{
+    fn stream<'a>(&'a self) -> Pin<Box<dyn Stream<Item = T> + 'a>> {
+        let fetch = self.fetch;
+        let stream = stream::unfold(0, move |state| async move {
+            let yielded = fetch(state).await;
+            let next_state = state + 1;
+            Some((yielded, next_state))
+        });
+        Box::pin(stream)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,4 +544,48 @@ mod tests {
     //     let (tx, rx) = mpsc::channel(32);
     //     foo(vec![(Box::pin(tx), Box::pin(rx))]).await;
     // }
+
+    // #[tokio::test]
+    // async fn test_num_op_services() {
+    //     let mut input = vec![1, 2, 3];
+    //     let op = NumberOperation::AddOne;
+    //
+    //     let s = Services::new(Box::new(|numbers: &mut Vec<usize>| {
+    //         Box::pin(async move {
+    //             for n in numbers {
+    //                 match op {
+    //                     NumberOperation::AddOne => *n = *n + 1,
+    //                     NumberOperation::MinusOne => *n = *n - 1,
+    //                 };
+    //             }
+    //         })
+    //     }));
+    //
+    //     (s.s1)(&mut input).await;
+    //     assert_eq!(input, vec![2, 3, 4]);
+    // }
+
+    #[tokio::test]
+    async fn test_num_op_services_alt() {
+        let input = vec![1, 2, 3];
+
+        let f = service(NumberOperation::AddOne).fun();
+
+        let output = f(input).await;
+        assert_eq!(output, vec![2, 3, 4]);
+    }
+
+    #[tokio::test]
+    async fn stream_pager() {
+        async fn fetch(page: i32) -> String {
+            format!("page: {}", page)
+        }
+
+        let pages = Pager { fetch }
+            .stream()
+            .take(10)
+            .collect::<Vec<String>>()
+            .await;
+        println!("Result: {:?}", pages);
+    }
 }

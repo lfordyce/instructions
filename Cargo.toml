@@ -12,6 +12,7 @@ tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 
 async-trait = "0.1.50"
+chrono = { version = "0.4", features = ["serde"] }
 rand  = "0.8.3"
 num = "0.4"
 num-traits = "0.2"

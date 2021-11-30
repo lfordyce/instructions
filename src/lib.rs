@@ -8,6 +8,7 @@ use tokio::macros::support::Future;
 
 pub mod abstractions;
 pub mod currying;
+mod dictionary;
 pub mod diy_stream;
 pub mod factory;
 pub mod gate;

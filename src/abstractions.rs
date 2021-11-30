@@ -1,3 +1,4 @@
+use chrono::{Date, Datelike, Utc};
 use futures::future::BoxFuture;
 use std::borrow::{Borrow, Cow};
 use std::convert::TryFrom;
@@ -8,6 +9,47 @@ use std::ops::Index;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Mutex;
+
+// Abstract class modeling
+pub trait Locale<T> {
+    fn local_greeting(info: T) -> String;
+}
+
+pub struct Greeting<T, LOCALE>
+where
+    LOCALE: Locale<T>,
+{
+    name: String,
+    locale_specific_info: T,
+    locale: PhantomData<LOCALE>,
+}
+
+impl<T, LOCALE> Greeting<T, LOCALE>
+where
+    LOCALE: Locale<T>,
+{
+    pub fn new(name: String, locale_specific_info: T) -> Self {
+        Self {
+            name,
+            locale_specific_info,
+            locale: PhantomData,
+        }
+    }
+
+    pub fn greet(self) -> String {
+        let local_greeting = LOCALE::local_greeting(self.locale_specific_info);
+        format!("Hello {}\nToday is {}", self.name, local_greeting)
+    }
+}
+
+pub struct UsaLocale {}
+
+impl Locale<Date<Utc>> for UsaLocale {
+    fn local_greeting(info: Date<Utc>) -> String {
+        format!("{}/{}/{}", info.month(), info.day(), info.year())
+    }
+}
+// ==============================
 
 // Interface
 pub trait OfficeWorker {
@@ -622,5 +664,16 @@ mod tests {
             f: callback,
         };
         holder.call_f("hello!");
+    }
+
+    #[test]
+    fn test_abstract_class() {
+        pub type UsaGreeting = Greeting<Date<Utc>, UsaLocale>;
+
+        let dt = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now());
+
+        let a = UsaGreeting::new("world".to_string(), dt.date());
+
+        println!("{}", a.greet());
     }
 }
