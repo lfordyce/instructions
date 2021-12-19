@@ -316,4 +316,31 @@ mod tests {
         // But how to gracefully dispatch different variants?
         println!("Result of complex analysis was: {}", result.solve());
     }
+
+    #[test]
+    fn test_start_end_iteration() {
+        let v = vec![1, 2, 3, 4, 5];
+
+        // With iterators
+        // let (f, b) = v.split_at(v.len() / 2);
+        // for (x, y) in f.iter().zip(b.iter().rev()) {
+        //     println!("{}, {}", x, y)
+        // }
+
+        // with pattern matching
+        let mut s = &v[..];
+        loop {
+            match s {
+                [a, rest @ .., b] => {
+                    println!("{}, {}", a, b);
+                    s = rest;
+                }
+                [a] => {
+                    println!("{}", a);
+                    break;
+                }
+                [] => break,
+            }
+        }
+    }
 }

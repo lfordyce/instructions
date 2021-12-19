@@ -233,6 +233,22 @@ where
     ) -> BoxFuture<'static, TransitionOut<Self::Dialogue, Self::Error>>;
 }
 
+// impl teloxide::dispatching::dialogue::Transition for Dialogue {
+//     type Aux = <StartState as teloxide::dispatching::dialogue::Subtransition>::Aux;
+//     type Error = <StartState as teloxide::dispatching::dialogue::Subtransition>::Error;
+//     type Requester = <StartState as teloxide::dispatching::dialogue::Subtransition>::Requester;
+//     fn react(self, cx: teloxide::dispatching::dialogue::TransitionIn<Self::Requester>, aux: Self::Aux) -> futures::future::BoxFuture<'static, teloxide::dispatching::dialogue::TransitionOut<Self, Self::Error>> {
+//         futures::future::FutureExt::boxed(async move {
+//             match self {
+//                 Dialogue::Start(state) => teloxide::dispatching::dialogue::Subtransition::react(state, cx, aux).await,
+//                 Dialogue::ReceiveFullName(state) => teloxide::dispatching::dialogue::Subtransition::react(state, cx, aux).await,
+//                 Dialogue::ReceiveAge(state) => teloxide::dispatching::dialogue::Subtransition::react(state, cx, aux).await,
+//                 Dialogue::ReceiveLocation(state) => teloxide::dispatching::dialogue::Subtransition::react(state, cx, aux).await,
+//             }
+//         })
+//     }
+// }
+
 impl Transition for Dialogue {
     type Aux = <StartState as Subtransition>::Aux;
     type Error = <StartState as Subtransition>::Error;

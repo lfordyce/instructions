@@ -6,6 +6,14 @@ use std::future::Future;
 use std::io;
 use std::pin::Pin;
 
+/// `Box` is the only way to move the ownership of the memory where the `Future` is stored
+/// without moving the `Future` itself. That said `Future`s can be pinned on the stack,
+/// but that's limiting when you don't want to block until it is completed.
+///
+/// As for why it needs to be pinned, this is due to the fact that `async fn`s let you keep
+/// references to local variables across the `.await` point, and to ensure those are still valid
+/// the next time the `Future` is polled you can't move it, thus the need for `Pin`.
+
 pub struct X {
     chain: Vec<Box<dyn FnOnce(&mut X) -> Pin<Box<dyn Future<Output = ()> + '_>>>>,
 }
