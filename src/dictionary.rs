@@ -1,6 +1,8 @@
+use std::borrow::{Borrow, Cow};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::linked_list::LinkedList;
 use std::hash::{Hash, Hasher};
+use std::{cmp::Eq, collections::HashMap, iter::FromIterator};
 
 #[derive(Debug)]
 struct DictionaryCell<T, U> {
@@ -89,6 +91,98 @@ impl<T: Hash + Eq + Clone, U: Copy> Dictionary<T, U> {
     }
 }
 
+struct MyCoolType<K: Eq + Hash, V>(HashMap<K, Vec<V>>);
+
+impl<K: Eq + Hash, V> FromIterator<(K, V)> for MyCoolType<K, V> {
+    fn from_iter<I>(tuples: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+    {
+        let mut m = HashMap::new();
+        for (k, v) in tuples {
+            m.entry(k).or_insert_with(Vec::new).push(v)
+        }
+        Self(m)
+    }
+}
+
+#[derive(Debug, Eq, Hash, PartialEq)]
+struct Complex<'a> {
+    n: i32,
+    s: Cow<'a, str>,
+}
+
+impl<'a> Complex<'a> {
+    fn new<S: Into<Cow<'a, str>>>(n: i32, s: S) -> Self {
+        Complex { n, s: s.into() }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+enum ConfigKey {
+    Text(String),
+    Binary(Vec<u8>),
+}
+
+impl ConfigKey {
+    fn as_ref(&self) -> ConfigKeyRef {
+        match self {
+            ConfigKey::Text(t) => ConfigKeyRef::Text(t),
+            ConfigKey::Binary(b) => ConfigKeyRef::Binary(b),
+        }
+    }
+}
+
+#[derive(Hash, PartialEq, Eq)]
+enum ConfigKeyRef<'a> {
+    Text(&'a str),
+    Binary(&'a [u8]),
+}
+
+// ----------
+
+trait Key {
+    fn to_key(&self) -> ConfigKeyRef;
+}
+
+impl Hash for dyn Key + '_ {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.to_key().hash(state);
+    }
+}
+
+impl PartialEq for dyn Key + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_key() == other.to_key()
+    }
+}
+
+impl Eq for dyn Key + '_ {}
+
+impl Key for ConfigKey {
+    fn to_key(&self) -> ConfigKeyRef {
+        self.as_ref()
+    }
+}
+
+impl<'a> Key for &'a str {
+    fn to_key(&self) -> ConfigKeyRef {
+        ConfigKeyRef::Text(self)
+    }
+}
+
+impl<'a> Borrow<dyn Key + 'a> for ConfigKey {
+    fn borrow(&self) -> &(dyn Key + 'a) {
+        self
+    }
+}
+
+impl<'a> Borrow<dyn Key + 'a> for &'a str {
+    fn borrow(&self) -> &(dyn Key + 'a) {
+        self
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -100,5 +194,31 @@ mod test {
         map.put(&s, 42);
         println!("{:?}", map.get(&s).unwrap());
         println!("{:?}", map.get(&s).unwrap());
+    }
+
+    #[test]
+    fn my_cool_type() {
+        let tuples = vec![("one", 1), ("two", 2), ("one", 3)];
+        let MyCoolType(m) = tuples.into_iter().collect();
+        println!("{:?}", m);
+    }
+
+    #[test]
+    fn complex_key_type() {
+        let mut m = std::collections::HashMap::<Complex<'_>, i32>::new();
+        m.insert(Complex::new(42, "foo"), 123);
+
+        assert_eq!(123, *m.get(&Complex::new(42, "foo")).unwrap());
+    }
+
+    #[test]
+    fn config_key() {
+        let mut m = HashMap::new();
+        m.insert(ConfigKey::Text("foo".into()), 123);
+        m.insert(ConfigKey::Binary(vec![]), 456);
+
+        assert_eq!(m.get(&ConfigKey::Text("foo".into())), Some(&123));
+        assert_eq!(m.get(&"foo" as &dyn Key), Some(&123));
+        assert_eq!(m.get(&"bar" as &dyn Key), None);
     }
 }
