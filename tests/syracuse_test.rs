@@ -7,6 +7,24 @@ use std::io;
 use std::ops::{Add, Div, Mul, Rem};
 use thiserror::Error;
 
+#[derive(Copy, Clone)]
+struct Big {
+    things: [u64; 100],
+}
+
+impl Add<Big> for Big {
+    type Output = Big;
+
+    #[inline(never)]
+    fn add(self, rhs: Big) -> Big {
+        let mut c = Big { things: [0; 100] };
+        for i in 0..100 {
+            c.things[i] = self.things[i] + rhs.things[i];
+        }
+        c
+    }
+}
+
 fn syracuse<T>(n: T) -> T
 where
     T: Copy
@@ -419,6 +437,15 @@ fn test_transition() {
     // let result: TransitionOut<Dialogue> = next(HaveNumberState { number: 35 });
     let result: TransitionOut<Dialogue> = next(Dialogue::default());
     println!("{:?}", result);
+}
+
+#[test]
+fn test_add_thing() {
+    let a = Big { things: [1; 100] };
+    let b = Big { things: [2; 100] };
+    let c = a + b;
+
+    println!("{} + {} = {}", a.things[0], b.things[0], c.things[0])
 }
 
 #[tokio::test]

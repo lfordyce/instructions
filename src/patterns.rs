@@ -255,6 +255,49 @@ impl SearchSpace for SquareGrid {
     }
 }
 
+#[derive(Debug)]
+struct Person {
+    name: String,
+    age: usize,
+}
+
+impl Default for Person {
+    fn default() -> Self {
+        Self {
+            name: "John".to_string(),
+            age: 30,
+        }
+    }
+}
+
+impl From<&str> for Person {
+    fn from(s: &str) -> Self {
+        if s.is_empty() {
+            Self::default()
+        } else {
+            let i = s.find(':');
+            // i is a byte index, not a character index.
+            // But we know that the '+1' will work here because the UTF-8
+            // representation of ':' is a single byte.
+            let r = i.map(|i| (&s[0..i], &s[i + 1..]));
+            let mut text = s.splitn(2, ':');
+            let (a, b) = (text.next(), text.next());
+
+            let fields: Vec<&str> = s.split(",").collect();
+            match (fields.get(0), fields.get(1)) {
+                (Some(name), Some(age)) if !name.is_empty() => match age.parse::<usize>() {
+                    Err(_) => Person::default(),
+                    Ok(age) => Person {
+                        name: String::from(*name),
+                        age,
+                    },
+                },
+                _ => Self::default(),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,5 +385,13 @@ mod tests {
                 [] => break,
             }
         }
+    }
+
+    #[test]
+    fn test_from_str() {
+        let p = Person::from("mark,");
+        println!("{:?}", p);
+        // assert_eq!(p.name, "mark");
+        // assert_eq!(p.age, 30)
     }
 }

@@ -613,6 +613,25 @@ where
     }
 }
 
+pub trait MovingAverage<Output = Vec<f64>> {
+    fn sma(&self, periods: usize) -> Output;
+}
+
+impl<T: Copy + Into<f64>> MovingAverage for [T] {
+    fn sma(&self, periods: usize) -> Vec<f64> {
+        let mut sum = 0f64;
+        let mut ma = Vec::<f64>::new();
+        for i in 0..self.len() {
+            if i >= periods {
+                ma.push(sum / periods as f64);
+                sum -= self[i - periods].into();
+            }
+            sum += self[i].into();
+        }
+        ma
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -675,5 +694,16 @@ mod tests {
         let a = UsaGreeting::new("world".to_string(), dt.date());
 
         println!("{}", a.greet());
+    }
+
+    #[test]
+    fn test_moving_average() {
+        let numsf = vec![5., 10., 3., 9., 8., 7.];
+        let numsi = vec![2, 4, 3, 5, 1, 1];
+        let n = 2;
+        let smaf = numsf.sma(n);
+        let smai = numsi.sma(n);
+        println!("{:?}", smaf);
+        println!("{:?}", smai);
     }
 }
