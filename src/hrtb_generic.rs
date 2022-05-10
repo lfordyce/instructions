@@ -2,9 +2,12 @@ use futures::channel::mpsc;
 use futures::stream;
 use futures::FutureExt;
 use futures::{Sink, SinkExt, Stream, StreamExt};
+use std::convert::TryInto;
+use std::fmt::Debug;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
+use std::process::Output;
 
 /// `Box` is the only way to move the ownership of the memory where the `Future` is stored
 /// without moving the `Future` itself. That said `Future`s can be pinned on the stack,
@@ -508,9 +511,65 @@ where
     }
 }
 
+// dyn associated types
+// addapted from: https://sabrinajewson.org/blog/the-better-alternative-to-lifetime-gats
+pub trait GivesOutput<'a> {
+    type Output;
+}
+
+pub trait LendingIterator {
+    type Item: ?Sized + for<'this> GivesOutput<'this>;
+    fn next(&mut self) -> Option<<Self::Item as GivesOutput<'_>>::Output>;
+}
+
+pub struct WindowsMut<'a, T, const WINDOW_SIZE: usize> {
+    slice: &'a mut [T],
+    first: bool,
+}
+
+/// `dyn Trait` can't be "used" without indirection (which can be &, &mut, Box, Arc, etc.) By "used",
+/// I mean stored on the stack or passed as argument. This is because it (and slices `[T]`, and `str`)
+/// are `!Sized`. But it can still be used as a type.
+///
+/// `dyn for<'this> GivesOutput<'this, Output = &'this mut [T; WINDOW_SIZE]>;` trait object
+/// is a concrete types, it's just never instantiated, so the fact it's `!Sized` is not a problem.
+///
+impl<'a, T, const WINDOW_SIZE: usize> LendingIterator for WindowsMut<'a, T, WINDOW_SIZE> {
+    type Item = dyn for<'this> GivesOutput<'this, Output = &'this mut [T; WINDOW_SIZE]>;
+
+    fn next(&mut self) -> Option<<Self::Item as GivesOutput<'_>>::Output> {
+        if !self.first {
+            self.slice = &mut std::mem::take(&mut self.slice)[1..];
+        }
+        self.first = false;
+
+        Some(self.slice.get_mut(..WINDOW_SIZE)?.try_into().unwrap())
+    }
+}
+
+fn print_items<I>(mut iter: I)
+where
+    I: LendingIterator,
+    for<'a> <I::Item as GivesOutput<'a>>::Output: Debug,
+{
+    while let Some(item) = iter.next() {
+        println!("{item:?}");
+    }
+}
+
+pub fn windows_mut<T, const WINDOW_SIZE: usize>(slice: &mut [T]) -> WindowsMut<'_, T, WINDOW_SIZE> {
+    assert_ne!(WINDOW_SIZE, 0);
+    WindowsMut { slice, first: true }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_lending_iter() {
+        print_items::<WindowsMut<'_, _, 3>>(windows_mut(&mut [1, 2, 3, 4, 5, 6, 7, 8, 9]));
+    }
 
     // #[test]
     // fn basic_test() {
