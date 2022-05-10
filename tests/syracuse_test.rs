@@ -42,6 +42,16 @@ where
     }
 }
 
+fn is_palindrome(input: String) -> bool {
+    let mut chars = input.bytes();
+    while let Some((front, back)) = chars.next().zip(chars.next_back()) {
+        if front != back {
+            return false;
+        }
+    }
+    true
+}
+
 pub trait Fizzy {
     fn fizzy(&self) -> String;
 }
@@ -395,6 +405,11 @@ fn syracuse_test() {
     input
         .into_iter()
         .for_each(|(input, output)| assert_eq!(syracuse(input), output));
+}
+
+#[test]
+fn test_is_palindrome() {
+    assert_eq!(is_palindrome(String::from("racecar")), true);
 }
 
 #[test]
