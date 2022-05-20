@@ -1,5 +1,6 @@
 use crate::BoolTrait;
 use serde::Deserialize;
+use std::collections::btree_set::{BTreeSet, IntoIter};
 use std::sync::Arc;
 
 pub struct Context<S, D>
@@ -298,9 +299,110 @@ impl From<&str> for Person {
     }
 }
 
+enum UniquePermutations {
+    Leaf {
+        elements: Option<Vec<String>>,
+    },
+    Stem {
+        elements: Vec<String>,
+        unique_elements: IntoIter<String>,
+        first_element: String,
+        inner: Box<Self>,
+    },
+}
+
+impl UniquePermutations {
+    fn new(elements: Vec<String>) -> Self {
+        if elements.len() == 1 {
+            let elements = Some(elements);
+            Self::Leaf { elements }
+        } else {
+            let mut unique_elements = elements
+                .clone()
+                .into_iter()
+                .collect::<BTreeSet<_>>()
+                .into_iter();
+
+            let (first_element, inner) = Self::next_level(&mut unique_elements, elements.clone())
+                .expect("Must have at least one item");
+
+            Self::Stem {
+                elements,
+                unique_elements,
+                first_element,
+                inner,
+            }
+        }
+    }
+
+    fn next_level(
+        mut unique_elements: impl Iterator<Item = String>,
+        elements: Vec<String>,
+    ) -> Option<(String, Box<Self>)> {
+        let first_element = unique_elements.next()?;
+
+        let mut remaining_elements = elements;
+
+        if let Some(idx) = remaining_elements
+            .iter()
+            .position(|i| i.clone() == first_element)
+        {
+            remaining_elements.remove(idx);
+        }
+
+        let inner = Box::new(Self::new(remaining_elements));
+
+        Some((first_element, inner))
+    }
+}
+
+impl Iterator for UniquePermutations {
+    type Item = Vec<String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Leaf { elements } => elements.take(),
+            Self::Stem {
+                elements,
+                unique_elements,
+                first_element,
+                inner,
+            } => loop {
+                match inner.next() {
+                    Some(mut v) => {
+                        // v.insert(0, *first_element);
+                        v.insert(0, first_element.clone());
+                        return Some(v);
+                    }
+                    None => {
+                        let (next_fe, next_i) =
+                            Self::next_level(&mut *unique_elements, elements.clone())?;
+                        *first_element = next_fe;
+                        *inner = next_i;
+                    }
+                }
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_permutations() {
+        let items = vec![
+            "BTC".to_string(),
+            "ETH".to_string(),
+            "DOT".to_string(),
+            "USD".to_string(),
+            "USDC".to_string(),
+        ];
+        for perm in UniquePermutations::new(items) {
+            println!("{:?}", perm);
+        }
+    }
 
     #[test]
     fn test_function_parameterized_trait() {
