@@ -562,6 +562,79 @@ pub fn windows_mut<T, const WINDOW_SIZE: usize>(slice: &mut [T]) -> WindowsMut<'
     WindowsMut { slice, first: true }
 }
 
+#[derive(Debug)]
+struct Consumer;
+
+impl Consumer {
+    fn commit_message(&self, msg: &BorrowedMessage<'_>) {
+        println!("committed {:?}", msg);
+    }
+}
+
+#[derive(Debug)]
+struct BorrowedMessage<'a> {
+    data: String,
+    consumer: &'a Consumer,
+}
+
+struct KafkaEventSource {
+    consumer: Consumer,
+}
+
+impl KafkaEventSource {
+    fn new(consumer: Consumer) -> Self {
+        Self { consumer }
+    }
+}
+
+#[derive(Debug)]
+struct Event {
+    data: String,
+}
+
+trait HasMessageType<'a, _Outlives = &'a Self> {
+    type Message;
+}
+type Message<'a, This> = <This as HasMessageType<'a>>::Message;
+
+trait EventSource: for<'a> HasMessageType<'a> {
+    fn recv(&self) -> Message<'_, Self>;
+
+    fn msg_to_event(msg: &Message<'_, Self>) -> Event;
+
+    fn post_hook(&self, msg: &Message<'_, Self>);
+
+    fn run(&self) {
+        let msg = self.recv();
+        let event = Self::msg_to_event(&msg);
+        println!("got event {:?}", event);
+        self.post_hook(&msg);
+    }
+}
+
+impl<'a> HasMessageType<'a> for KafkaEventSource {
+    type Message = BorrowedMessage<'a>;
+}
+
+impl EventSource for KafkaEventSource {
+    fn recv(&self) -> BorrowedMessage<'_> {
+        BorrowedMessage {
+            data: "data".to_string(),
+            consumer: &self.consumer,
+        }
+    }
+
+    fn msg_to_event(msg: &BorrowedMessage<'_>) -> Event {
+        Event {
+            data: msg.data.clone(),
+        }
+    }
+
+    fn post_hook(&self, msg: &BorrowedMessage<'_>) {
+        self.consumer.commit_message(msg);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -654,5 +727,14 @@ mod tests {
             .collect::<Vec<String>>()
             .await;
         println!("Result: {:?}", pages);
+    }
+
+    #[test]
+    fn test_gat_workaround() {
+        let consumer = Consumer;
+
+        let kafka_event_source = KafkaEventSource::new(consumer);
+
+        kafka_event_source.run();
     }
 }
