@@ -298,8 +298,19 @@ impl From<&str> for Person {
     }
 }
 
+fn transpose<const R: usize, const C: usize, T: Copy + Default>(m: [[T; C]; R]) -> [[T; R]; C] {
+    let mut result: [[T; R]; C] = [[Default::default(); R]; C];
+    for i in 0..R {
+        for j in 0..C {
+            result[j][i] = m[i][j];
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
+    use rand::{Rng, thread_rng};
     use super::*;
 
     #[test]
@@ -394,4 +405,20 @@ mod tests {
         // assert_eq!(p.name, "mark");
         // assert_eq!(p.age, 30)
     }
+
+    #[test]
+    fn test_transpose() {
+        let mut rng = thread_rng();
+        let mut a = [[0.0f32; 3]; 2];
+        for i in 0..2 {
+            for j in 0..3 {
+                a[i][j] = rng.gen();
+            }
+        }
+        println!("BEFORE: {:?}", a);
+        let b = transpose(a);
+        println!("AFTER: {:?}", b)
+    }
+
+
 }
