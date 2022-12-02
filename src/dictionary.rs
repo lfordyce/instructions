@@ -3,6 +3,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::linked_list::LinkedList;
 use std::hash::{Hash, Hasher};
 use std::{cmp::Eq, collections::HashMap, iter::FromIterator};
+use std::collections::BTreeMap;
 
 #[derive(Debug)]
 struct DictionaryCell<T, U> {
@@ -95,8 +96,8 @@ struct MyCoolType<K: Eq + Hash, V>(HashMap<K, Vec<V>>);
 
 impl<K: Eq + Hash, V> FromIterator<(K, V)> for MyCoolType<K, V> {
     fn from_iter<I>(tuples: I) -> Self
-    where
-        I: IntoIterator<Item = (K, V)>,
+        where
+            I: IntoIterator<Item=(K, V)>,
     {
         let mut m = HashMap::new();
         for (k, v) in tuples {
@@ -183,6 +184,85 @@ impl<'a> Borrow<dyn Key + 'a> for &'a str {
     }
 }
 
+
+pub trait MapLike<K: Eq, V> {
+    type It<'a>: Iterator<Item=(&'a K, &'a V)>
+        where
+            K: 'a,
+            V: 'a,
+            Self: 'a;
+
+    fn get(&self, k: &K) -> Option<&V>;
+    fn insert(&mut self, k: K, v: V);
+    fn remove(&mut self, k: &K);
+
+    fn iter<'a>(&'a self) -> Self::It<'a>
+        where
+            K: 'a,
+            V: 'a;
+}
+
+impl<K: Eq + Ord, V> MapLike<K, V> for BTreeMap<K, V> {
+    type It<'a> = std::collections::btree_map::Iter<'a, K, V> where K: 'a, V: 'a;
+
+    fn get(&self, k: &K) -> Option<&V> {
+        self.get(k)
+    }
+
+    fn insert(&mut self, k: K, v: V) {
+        self.insert(k, v);
+    }
+
+    fn remove(&mut self, k: &K) {
+        self.remove(k);
+    }
+
+    fn iter<'a>(&'a self) -> Self::It<'a>
+        where
+            K: 'a,
+            V: 'a,
+    {
+        self.iter()
+    }
+}
+
+impl<K: Eq + Hash, V> MapLike<K, V> for HashMap<K, V> {
+    type It<'a> = std::collections::hash_map::Iter<'a, K, V> where K: 'a, V: 'a;
+
+    fn get(&self, k: &K) -> Option<&V> {
+        self.get(k)
+    }
+
+    fn insert(&mut self, k: K, v: V) {
+        self.insert(k, v);
+    }
+
+    fn remove(&mut self, k: &K) {
+        self.remove(k);
+    }
+
+    fn iter<'a>(&'a self) -> Self::It<'a>
+        where
+            K: 'a,
+            V: 'a,
+    {
+        self.iter()
+    }
+}
+
+fn play_around_with_map<M: MapLike<usize, usize>>(m: &mut M) {
+    m.insert(1, 2);
+    m.insert(3, 4);
+    m.insert(100, 10);
+
+    m.get(&2);
+    m.remove(&3);
+
+    for (k, v) in m.iter() {
+        println!("k = {k} v = {v}");
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -220,5 +300,11 @@ mod test {
         assert_eq!(m.get(&ConfigKey::Text("foo".into())), Some(&123));
         assert_eq!(m.get(&"foo" as &dyn Key), Some(&123));
         assert_eq!(m.get(&"bar" as &dyn Key), None);
+    }
+
+    #[test]
+    fn play_with_map() {
+        play_around_with_map(&mut HashMap::new());
+        play_around_with_map(&mut BTreeMap::new());
     }
 }
