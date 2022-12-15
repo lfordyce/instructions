@@ -9,6 +9,7 @@ use instructions::{a, add_one, add_ten, b, check_me, wrapper, CheckerSystem, Sys
 use std::convert::TryFrom;
 use std::fmt::Display;
 use std::pin::Pin;
+use tokio::count;
 
 // fully qualified syntax for traits:
 // `<T as TryFrom<&'a [u8]>>::Error` to say which instance we want to
@@ -64,6 +65,37 @@ fn new_foo<'a>(
     }
 }
 
+trait MyAsyncFn<'a>: Fn(&'a i32, &'a i32) -> Self::Fut {
+    type Fut: Future<Output = i32> + 'a;
+}
+
+impl<'a, F, Fut> MyAsyncFn<'a> for F
+where
+    F: Fn(&'a i32, &'a i32) -> Fut,
+    Fut: Future<Output = i32> + 'a,
+{
+    type Fut = Fut;
+}
+
+async fn process_with_async_proc<F>(func: F, x: &i32, y: &i32) -> i32
+where
+    for<'a> F: MyAsyncFn<'a>,
+{
+    func(x, y).await
+}
+
+async fn async_integer_bump(x: &i32) -> i32 {
+    *x + 1
+}
+
+async fn do_something_async_like<'a>(x: &'a i32, y: &'a i32) -> i32 {
+    async_integer_bump(x).await + async_integer_bump(y).await
+}
+
+async fn this_is_func(x: &i32, y: &i32) -> i32 {
+    process_with_async_proc(do_something_async_like, x, y).await
+}
+
 #[test]
 fn test_container_new() {
     Container::new("".as_bytes());
@@ -80,6 +112,13 @@ fn test_adder() {
 async fn hrtb() {
     let result = wrapper(add_ten).await;
     println!("{:?}", result)
+}
+
+#[tokio::test]
+async fn do_something_async() {
+    let answer = this_is_func(&5, &6).await;
+
+    println!("{:?}", answer);
 }
 
 #[tokio::test]
