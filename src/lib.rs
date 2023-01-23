@@ -12,6 +12,7 @@ mod dictionary;
 pub mod diy_stream;
 pub mod factory;
 pub mod gate;
+mod gats;
 pub mod health;
 mod health_alt;
 pub mod hrtb_generic;

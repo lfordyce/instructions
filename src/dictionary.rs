@@ -1,9 +1,9 @@
 use std::borrow::{Borrow, Cow};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::linked_list::LinkedList;
+use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::{cmp::Eq, collections::HashMap, iter::FromIterator};
-use std::collections::BTreeMap;
 
 #[derive(Debug)]
 struct DictionaryCell<T, U> {
@@ -96,8 +96,8 @@ struct MyCoolType<K: Eq + Hash, V>(HashMap<K, Vec<V>>);
 
 impl<K: Eq + Hash, V> FromIterator<(K, V)> for MyCoolType<K, V> {
     fn from_iter<I>(tuples: I) -> Self
-        where
-            I: IntoIterator<Item=(K, V)>,
+    where
+        I: IntoIterator<Item = (K, V)>,
     {
         let mut m = HashMap::new();
         for (k, v) in tuples {
@@ -184,26 +184,28 @@ impl<'a> Borrow<dyn Key + 'a> for &'a str {
     }
 }
 
-
 pub trait MapLike<K: Eq, V> {
-    type It<'a>: Iterator<Item=(&'a K, &'a V)>
-        where
-            K: 'a,
-            V: 'a,
-            Self: 'a;
+    type It<'a>: Iterator<Item = (&'a K, &'a V)>
+    where
+        K: 'a,
+        V: 'a,
+        Self: 'a;
 
     fn get(&self, k: &K) -> Option<&V>;
     fn insert(&mut self, k: K, v: V);
     fn remove(&mut self, k: &K);
 
     fn iter<'a>(&'a self) -> Self::It<'a>
-        where
-            K: 'a,
-            V: 'a;
+    where
+        K: 'a,
+        V: 'a;
 }
 
 impl<K: Eq + Ord, V> MapLike<K, V> for BTreeMap<K, V> {
-    type It<'a> = std::collections::btree_map::Iter<'a, K, V> where K: 'a, V: 'a;
+    type It<'a> = std::collections::btree_map::Iter<'a, K, V>
+    where
+        K: 'a,
+        V: 'a;
 
     fn get(&self, k: &K) -> Option<&V> {
         self.get(k)
@@ -218,9 +220,9 @@ impl<K: Eq + Ord, V> MapLike<K, V> for BTreeMap<K, V> {
     }
 
     fn iter<'a>(&'a self) -> Self::It<'a>
-        where
-            K: 'a,
-            V: 'a,
+    where
+        K: 'a,
+        V: 'a,
     {
         self.iter()
     }
@@ -242,9 +244,9 @@ impl<K: Eq + Hash, V> MapLike<K, V> for HashMap<K, V> {
     }
 
     fn iter<'a>(&'a self) -> Self::It<'a>
-        where
-            K: 'a,
-            V: 'a,
+    where
+        K: 'a,
+        V: 'a,
     {
         self.iter()
     }
