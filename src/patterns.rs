@@ -425,6 +425,7 @@ pub fn abstract_iterator<I, O>(input: I) -> O
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use std::str::Chars;
     use rand::{Rng, thread_rng};
     use super::*;
@@ -559,5 +560,19 @@ mod tests {
     #[test]
     fn test_cow_stuff() {
         println!("{}", f(""));
+    }
+
+    #[test]
+    fn test_maintain_interior_mutability() {
+        let mut numbers: HashMap<usize, Cell<i32>> = vec![0; 100].into_iter().enumerate().map(
+            |(i, _)| (i, Cell::new(i as i32))
+        ).collect();
+        let even_references = numbers.iter().filter(|(_, n)| n.get() & 1 == 0);
+        let odd_references = numbers.iter().filter(|(_, n)| n.get() & 1 != 0);
+
+        even_references.for_each(|item| item.1.set(item.1.get() * 2));
+        odd_references.for_each(|item| item.1.set(item.1.get() * 2));
+
+        println!("{numbers:?}")
     }
 }
