@@ -1,7 +1,7 @@
 use std::borrow::{Borrow, Cow};
+use std::collections::btree_map::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::linked_list::LinkedList;
-use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::{cmp::Eq, collections::HashMap, iter::FromIterator};
 
