@@ -1,4 +1,4 @@
-use chrono::{Date, Datelike, Utc};
+use chrono::{Date, Datelike, DateTime, Utc};
 use futures::future::BoxFuture;
 use std::borrow::{Borrow, Cow};
 use std::convert::TryFrom;
@@ -44,8 +44,8 @@ where
 
 pub struct UsaLocale {}
 
-impl Locale<Date<Utc>> for UsaLocale {
-    fn local_greeting(info: Date<Utc>) -> String {
+impl Locale<DateTime<Utc>> for UsaLocale {
+    fn local_greeting(info: DateTime<Utc>) -> String {
         format!("{}/{}/{}", info.month(), info.day(), info.year())
     }
 }
@@ -687,11 +687,11 @@ mod tests {
 
     #[test]
     fn test_abstract_class() {
-        pub type UsaGreeting = Greeting<Date<Utc>, UsaLocale>;
+        pub type UsaGreeting = Greeting<DateTime<Utc>, UsaLocale>;
 
         let dt = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now());
 
-        let a = UsaGreeting::new("world".to_string(), dt.date());
+        let a = UsaGreeting::new("world".to_string(), dt);
 
         println!("{}", a.greet());
     }

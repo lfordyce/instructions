@@ -8,6 +8,7 @@ use tokio::macros::support::Future;
 
 pub mod abstractions;
 pub mod currying;
+mod data_structures;
 mod dictionary;
 pub mod diy_stream;
 pub mod factory;
@@ -20,6 +21,7 @@ pub mod lifetime_stuff;
 pub mod line_writer;
 pub mod patterns;
 pub mod plugin;
+mod puzzle;
 mod queuer;
 pub mod ray_tracing;
 
