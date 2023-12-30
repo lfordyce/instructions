@@ -3,6 +3,7 @@ mod num_of_islands;
 mod s0001_two_sum;
 mod s0013_roman_to_integer;
 mod s0014_longest_common_prefix;
+mod s0017_letter_combination_phone_number;
 mod s0020_valid_parentheses;
 mod s0075_sort_colors;
 mod s0539_minesweeper;
