@@ -1,4 +1,5 @@
 mod longest_common_prefix_trie;
+mod min_remove_to_make_valid;
 mod num_of_islands;
 mod s0001_two_sum;
 mod s0013_roman_to_integer;
