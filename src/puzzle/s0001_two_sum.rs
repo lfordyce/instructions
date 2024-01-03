@@ -21,12 +21,12 @@ use std::collections::HashMap;
 
 pub fn two_sum(nums: Vec<i32>, target: i32) -> Vec<i32> {
     let mut map = HashMap::with_capacity(nums.len());
-    for (idx, numb ) in nums.iter().enumerate() {
+    for (idx, numb) in nums.iter().enumerate() {
         match map.get(&(target - numb)) {
             None => {
                 map.insert(numb, idx);
             }
-            Some(sub_index) => return vec![*sub_index as i32, idx as i32]
+            Some(sub_index) => return vec![*sub_index as i32, idx as i32],
         }
     }
     vec![]
