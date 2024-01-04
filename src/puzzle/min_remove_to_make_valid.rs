@@ -86,3 +86,11 @@ pub fn min_remove_to_make_valid_zero_alloc(mut s: String) -> String {
     }
     s
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_min_remove_to_make_valid() {}
+}
