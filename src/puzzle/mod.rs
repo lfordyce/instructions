@@ -1,3 +1,4 @@
+mod event_ordering;
 mod longest_common_prefix_trie;
 mod max_profit;
 mod min_remove_to_make_valid;
