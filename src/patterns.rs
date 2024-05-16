@@ -503,6 +503,17 @@ mod tests {
     }
 
     #[test]
+    fn test_more_matching_patterns() {
+        let idx = 6;
+        let num = 15;
+        let res = match idx {
+            n if (1..=num - 5).contains(&n) => Some("match!"),
+            _ => None,
+        };
+        println!("{:?}", res);
+    }
+
+    #[test]
     fn test_start_end_iteration() {
         let v = vec![1, 2, 3, 4, 5];
 
