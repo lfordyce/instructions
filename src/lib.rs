@@ -24,6 +24,7 @@ pub mod plugin;
 mod puzzle;
 mod queuer;
 pub mod ray_tracing;
+mod sockets;
 
 #[async_trait]
 pub trait AsyncEvaluator {

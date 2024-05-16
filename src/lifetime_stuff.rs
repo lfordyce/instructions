@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 use tokio::sync::mpsc::{channel, Receiver};
 
@@ -192,9 +193,73 @@ impl WorkflowProcess {
     }
 }
 
+// Some data that is not copyable (just dummy integer here)
+// struct NonCopyableData {
+//     data: u32,
+// }
+// impl NonCopyableData {
+//     fn new(value: u32) -> Self {
+//         Self { data: value }
+//     }
+// }
+//
+// pub fn lifetime_stuffs<'b: 'a, 'a>(values: Vec<Arc<Mutex<NonCopyableData>>>) {
+//     // 'a is the (required) lifetime for items in `vec`
+//     let mut vec: Vec<&'a u32> = Vec::new();
+//
+//     for value in &values {
+//         // 'b is the lifetime of `locked`
+//         let locked: MutexGuard<'b, _> = value.lock().unwrap();
+//         // the lifetime of &locked.data is less than or equal to 'b, because we are borrowing from `locked`
+//         vec.push(&locked.data);
+//         // 'b ends here
+//     }
+//
+//     // "Do the thing" with `vec`
+//
+//     // 'a ends here
+// }
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex, MutexGuard};
+
+    #[test]
+    fn test_lifetimes() {
+        // Define somewhere in our app
+        // let values = vec![
+        //     Arc::new(Mutex::new(NonCopyableData::new(5))),
+        //     Arc::new(Mutex::new(NonCopyableData::new(4))),
+        //     Arc::new(Mutex::new(NonCopyableData::new(2))),
+        //     Arc::new(Mutex::new(NonCopyableData::new(1))),
+        // ];
+
+        // ...
+        // {
+        //     // Function scope
+        //     // Loop over it & gather values in a function
+        //     // 'a is the (required) lifetime for items in `vec`
+        //     let mut vec: Vec<&'a u32> = Vec::new();
+        //
+        //     // let mut vec = Vec::new();
+        //     // for value in &values {
+        //     //     let locked = value.lock().unwrap();
+        //     //     vec.push(&locked.data);
+        //     // }
+        //     // Do something with vec before exiting function
+        //     for value in &values {
+        //         // 'b is the lifetime of `locked`
+        //         let locked: MutexGuard<'b, _> = value.lock().unwrap();
+        //         // the lifetime of &locked.data is less than or equal to 'b, because we are borrowing from `locked`
+        //         vec.push(&locked.data);
+        //         // 'b ends here
+        //     }
+        //
+        //     // "Do the thing" with `vec`
+        // }
+        // lifetime_stuffs(values);
+    }
 
     #[test]
     fn test_lifetime_trait_fun() {
