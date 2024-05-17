@@ -1,11 +1,11 @@
 use futures::channel::mpsc;
 use futures::{sink::drain, stream, Future, Sink, SinkExt, Stream, StreamExt};
-use instructions::hrtb_generic::{
+use instructions_core::hrtb_generic::{
     add, add_explicit, doit, take_async_callback, test, Drill, Struct, X,
 };
-use instructions::line_writer::LineWriter;
-use instructions::plugin::{ClientConn, ClientConnectContext, Plugin};
-use instructions::{a, add_one, add_ten, b, check_me, wrapper, CheckerSystem, System};
+use instructions_core::line_writer::LineWriter;
+use instructions_core::plugin::{ClientConn, ClientConnectContext, Plugin};
+use instructions_core::{a, add_one, add_ten, b, check_me, wrapper, CheckerSystem, System};
 use std::convert::TryFrom;
 use std::fmt::Display;
 use std::pin::Pin;

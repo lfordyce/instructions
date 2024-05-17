@@ -1,4 +1,4 @@
-use instructions::ray_tracing::{color, Camera, Intersectables, Lambertian, Sphere, Vec3};
+use instructions_core::ray_tracing::{color, Camera, Intersectables, Lambertian, Sphere, Vec3};
 use rand::Rng;
 use std::fs::File;
 use std::io::Write;

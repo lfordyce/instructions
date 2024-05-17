@@ -1,4 +1,4 @@
-use instructions::abstractions::{
+use instructions_core::abstractions::{
     managers_only, office_workers_only, open_office_workers_only, test_visitor, CarFactory,
     InMemStorage, LoggingProducerTrait, Manager, ManagerImpl, OfficeWorker, OpenOfficeWorker,
     ProducerTrait, ProductTrait, Storage, StringVisitor,

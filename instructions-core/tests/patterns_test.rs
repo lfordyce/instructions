@@ -1,5 +1,7 @@
-use instructions::patterns;
-use instructions::patterns::{my_take, Context, ContextData, ContextStrategy, SomeTrait, Strategy};
+use instructions_core::patterns;
+use instructions_core::patterns::{
+    my_take, Context, ContextData, ContextStrategy, SomeTrait, Strategy,
+};
 use std::fmt;
 
 struct Radix {

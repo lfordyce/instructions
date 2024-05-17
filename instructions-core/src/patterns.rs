@@ -1,6 +1,6 @@
-use std::borrow::Cow;
 use crate::BoolTrait;
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::collections::btree_set::{BTreeSet, IntoIter};
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -8,8 +8,8 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 
 pub struct Context<S, D>
-    where
-        S: Strategy<D>,
+where
+    S: Strategy<D>,
 {
     pub s: S,
     pub data: D,
@@ -17,7 +17,7 @@ pub struct Context<S, D>
 
 pub trait Strategy<D> {
     // fn run(&self, item: &impl HasData<Data = D>);
-    fn run(&self, e: &dyn HasData<Data=D>);
+    fn run(&self, e: &dyn HasData<Data = D>);
 }
 
 pub trait HasData {
@@ -58,7 +58,7 @@ impl Default for ContextData {
 }
 
 impl Strategy<ContextData> for ContextStrategy {
-    fn run(&self, item: &dyn HasData<Data=ContextData>) {
+    fn run(&self, item: &dyn HasData<Data = ContextData>) {
         let d = item.data();
         // use ContextData
         println!("{:?}", d);
@@ -68,17 +68,17 @@ impl Strategy<ContextData> for ContextStrategy {
 // ========
 pub trait TraitTake {
     fn take<'slf>(self: &'_ mut Self) -> Box<dyn 'slf + SomeTrait>
-        where
-            Self: 'slf;
+    where
+        Self: 'slf;
 }
 
 impl<T: Default> TraitTake for T
-    where
-        T: SomeTrait, // if we impl the subtrait and Default, then we have `.take()`
+where
+    T: SomeTrait, // if we impl the subtrait and Default, then we have `.take()`
 {
     fn take<'slf>(self: &'_ mut Self) -> Box<dyn 'slf + SomeTrait>
-        where
-            Self: 'slf,
+    where
+        Self: 'slf,
     {
         Box::new(::core::mem::take(self))
     }
@@ -146,9 +146,9 @@ pub struct YourObject {
 }
 
 impl YourObject {
-    pub fn iter_as<'a, T>(&'a self) -> impl Iterator<Item=T> + 'a
-        where
-            T: From<&'a i32>,
+    pub fn iter_as<'a, T>(&'a self) -> impl Iterator<Item = T> + 'a
+    where
+        T: From<&'a i32>,
     {
         self.v1
             .iter()
@@ -211,9 +211,9 @@ struct Analysis<A, S> {
 }
 
 impl<A, S> Analysis<A, S>
-    where
-        A: Algorithm,
-        S: SearchSpace,
+where
+    A: Algorithm,
+    S: SearchSpace,
 {
     fn solve(&self) -> f64 {
         self.algorithm.evaluate(self.search_space.point())
@@ -341,7 +341,7 @@ impl UniquePermutations {
     }
 
     fn next_level(
-        mut unique_elements: impl Iterator<Item=String>,
+        mut unique_elements: impl Iterator<Item = String>,
         elements: Vec<String>,
     ) -> Option<(String, Box<Self>)> {
         let first_element = unique_elements.next()?;
@@ -411,24 +411,27 @@ fn f<'a>(s: impl Into<Cow<'a, str>>) -> Cow<'a, str> {
 }
 
 pub fn abstract_iterator<I, O>(input: I) -> O
-    where
-        I: IntoIterator,
-        I::Item: Hash + Eq,
-        O: FromIterator<usize>,
+where
+    I: IntoIterator,
+    I::Item: Hash + Eq,
+    O: FromIterator<usize>,
 {
     let mut dict = HashMap::new();
-    input.into_iter().map(move |elem| {
-        let id = dict.len();
-        *dict.entry(elem).or_insert(id)
-    }).collect()
+    input
+        .into_iter()
+        .map(move |elem| {
+            let id = dict.len();
+            *dict.entry(elem).or_insert(id)
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use rand::{thread_rng, Rng};
     use std::cell::Cell;
     use std::str::Chars;
-    use rand::{Rng, thread_rng};
-    use super::*;
 
     #[test]
     fn test_permutations() {
@@ -565,19 +568,24 @@ mod tests {
     #[test]
     fn test_abstract_iterator() {
         // assert!(abstract_iterator::<[i32; 3], O>([1,2,1]) == abstract_iterator("aba".chars()))
-        assert_eq!(abstract_iterator::<[i32; 3], Vec<usize>>([1, 2, 1]), abstract_iterator::<Chars<'_>, Vec<usize>>("aba".chars()))
+        assert_eq!(
+            abstract_iterator::<[i32; 3], Vec<usize>>([1, 2, 1]),
+            abstract_iterator::<Chars<'_>, Vec<usize>>("aba".chars())
+        )
     }
 
     #[test]
     fn test_cow_stuff() {
-        println!("{}", f(""));
+        println!("{}", f("foobar"));
     }
 
     #[test]
     fn test_maintain_interior_mutability() {
-        let mut numbers: HashMap<usize, Cell<i32>> = vec![0; 100].into_iter().enumerate().map(
-            |(i, _)| (i, Cell::new(i as i32))
-        ).collect();
+        let mut numbers: HashMap<usize, Cell<i32>> = vec![0; 100]
+            .into_iter()
+            .enumerate()
+            .map(|(i, _)| (i, Cell::new(i as i32)))
+            .collect();
         let even_references = numbers.iter().filter(|(_, n)| n.get() & 1 == 0);
         let odd_references = numbers.iter().filter(|(_, n)| n.get() & 1 != 0);
 
