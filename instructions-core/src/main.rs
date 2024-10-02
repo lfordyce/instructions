@@ -1,10 +1,12 @@
 use async_trait::async_trait;
-use std::fmt;
 use std::fmt::Debug;
+use std::fs::File;
 use std::future;
+use std::io::BufRead;
 use std::marker;
 use std::pin;
 use std::sync::Arc;
+use std::{fmt, io};
 use tokio::runtime;
 use tokio::spawn;
 use tokio::sync::broadcast;
@@ -259,6 +261,12 @@ where
     })
 }
 
+#[derive(Default)]
+struct Frame {
+    pts: u64,
+    data: Vec<String>,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rt = runtime::Runtime::new()?;
 
@@ -297,5 +305,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         println!("done");
     });
+
+    let file = File::open("./data/plane-pts.txt").unwrap();
+    let reader = io::BufReader::new(file);
+
+    let mut frames: Vec<Frame> = Vec::new();
+    let mut buffer = Vec::new();
+
+    for line in reader.lines() {
+        if let Ok(entry) = line {
+            if !entry.starts_with("END") {
+                match entry.parse::<u64>() {
+                    Ok(pts) => {
+                        frames.push(Frame {
+                            pts,
+                            data: std::mem::take(&mut buffer),
+                        });
+                    }
+                    Err(_) => {
+                        buffer.push(entry);
+                    }
+                }
+            }
+        }
+    }
+
+    let mut last: u64 = 0;
+    for f in frames {
+        print!("{esc}c", esc = 27 as char);
+        // std::process::Command::new("clear").status().unwrap();
+        // print!("\x1Bc");
+        for line in f.data {
+            println!("{}", line);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(f.pts - last));
+        last = f.pts;
+    }
+
     Ok(())
 }
